@@ -15,7 +15,8 @@ not a production portal or transaction system.
 
 ## Run the full stack locally
 
-Prerequisites: Node.js 20+ and a running Docker-compatible container engine.
+Prerequisites: Node.js 24 (run `nvm use`) and a running Docker-compatible
+container engine.
 
 1. Install dependencies: `npm install`
 2. Start Supabase: `npm run supabase:start`
