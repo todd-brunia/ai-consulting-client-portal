@@ -15,7 +15,7 @@ not a production portal or transaction system.
 
 ## Run the full stack locally
 
-Prerequisites: Node.js 24 (run `nvm use`) and a running Docker-compatible
+Prerequisites: Node.js 24.18.0 (run `nvm use`) and a running Docker-compatible
 container engine.
 
 1. Install dependencies: `npm install`
