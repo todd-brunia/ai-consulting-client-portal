@@ -1,0 +1,1 @@
+-- Account-specific sample data is created by the on_auth_user_created trigger.

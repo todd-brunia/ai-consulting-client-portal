@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Consulting Client Portal
 
-## Getting Started
+A private, local-first learning scaffold for the architecture described in the
+client portal revised plan. It is intentionally a thin collaboration shell,
+not a production portal or transaction system.
 
-First, run the development server:
+## What is included
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- Next.js App Router, TypeScript, Tailwind CSS
+- Local Supabase PostgreSQL, Auth, Storage, Studio, and test email inbox
+- Tenant-aware organizations, memberships, and engagements with RLS
+- A server-rendered authenticated workspace
+- A versioned JSON:API engagements endpoint
+- Vitest, ESLint, type checking, builds, and GitHub Actions
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Run the full stack locally
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Prerequisites: Node.js 20+ and a running Docker-compatible container engine.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Install dependencies: `npm install`
+2. Start Supabase: `npm run supabase:start`
+3. Copy `.env.local.example` to `.env.local` and replace the publishable key
+   with the value printed by `supabase start`.
+4. Reset the local database: `npm run supabase:reset`
+5. Start Next.js: `npm run dev`
+6. Open `http://localhost:3000`, create a local account, and inspect the sample
+   workspace. Local emails appear at `http://127.0.0.1:54324`.
 
-## Learn More
+No Vercel or hosted Supabase account is required. Stop local services with
+`npm run supabase:stop`.
 
-To learn more about Next.js, take a look at the following resources:
+## Architecture boundaries
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The browser uses Supabase only for the authentication protocol. Application
+data passes through server-rendered routes or `/api/v1`, where server-side
+authorization and PostgreSQL RLS both constrain access. JSON:API formatting is
+kept at the HTTP boundary.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Stripe, agreement providers, production deployment, and AI workflows are
+deliberately deferred.
