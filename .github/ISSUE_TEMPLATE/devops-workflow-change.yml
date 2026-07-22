@@ -1,0 +1,74 @@
+name: DevOps or workflow change
+description: Propose a CI/CD, deployment, repository, or AI-workflow change
+title: "[DevOps]: "
+labels:
+  - needs-planning
+  - devops
+  - workflow
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for repository operations and contribution workflow. AI will post a plan to the issue before implementation.
+
+  - type: dropdown
+    id: change-type
+    attributes:
+      label: Change type
+      options:
+        - GitHub Actions or CI
+        - Hosting or deployment
+        - Repository settings or policy
+        - Issue or pull request workflow
+        - Codex instructions or automation
+        - Monitoring or quality automation
+        - Build or release tooling
+        - Documentation process
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: What operational or workflow problem should be addressed?
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the safer, more reliable, or less manual future state.
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-process
+    attributes:
+      label: Current process or evidence
+      description: Describe current manual steps, failures, permissions, or service behavior.
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Initial idea
+      description: Describe a possible solution, if one is already in mind.
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: What must be true for this issue to be complete?
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints, permissions, or risks
+      description: Note secrets, access, cost, rollback, audit, or human-approval requirements.
+
+  - type: textarea
+    id: supporting-context
+    attributes:
+      label: Supporting context
+      description: Add relevant runs, deployments, settings, screenshots, or documentation.

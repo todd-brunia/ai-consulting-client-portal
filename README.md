@@ -39,3 +39,10 @@ kept at the HTTP boundary.
 
 Stripe, agreement providers, production deployment, and AI workflows are
 deliberately deferred.
+
+## Governed change workflow
+
+Repository changes use the same human-gated, label-driven Codex automation as
+`ai-consulting-site`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the operating
+flow and [docs/github-change-workflow.md](docs/github-change-workflow.md) for
+the security boundary and required GitHub configuration.

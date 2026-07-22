@@ -15,6 +15,22 @@ a thin collaboration layer around managed services.
 - Vitest and React Testing Library
 - GitHub Actions
 
+## Before Changing Code
+
+1. Read `README.md` and the relevant architecture guidance.
+2. Confirm that every tracked-file change has an originating issue; there is
+   no small-change bypass for dependencies, documentation, CI, or policy.
+3. Confirm that the issue has a marked plan and `approved-for-build`.
+4. AI implementation also requires `approved-for-ai-build`.
+5. Do not implement while `needs-decision`, `split-proposed`,
+   `approved-for-split`, or `split-parent` is present.
+
+Manual implementation uses a non-reserved branch and linked draft pull
+request. Reserve `codex/issue-<number>` branches for label automation. For
+local interactive implementation, use the repository-local
+`implement-approved-issue` skill; implementation permission does not imply
+permission to push, open a pull request, comment, or change labels.
+
 ## Engineering Principles
 
 - Prefer a simple Next.js monolith with clear domain and provider boundaries.
@@ -27,3 +43,9 @@ a thin collaboration layer around managed services.
 ## Required Validation
 
 Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`.
+
+## Pull Request Requirements
+
+Include the outcome, originating issue, validation, accessibility impact,
+documentation impact, and known limitations. Never push directly to or merge
+into `main`. Only a human may approve the plan, approve the result, and merge.

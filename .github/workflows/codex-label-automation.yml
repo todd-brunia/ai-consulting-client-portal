@@ -1,0 +1,559 @@
+name: Codex label automation
+
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Open issue number to process
+        required: true
+        type: number
+      stage:
+        description: Workflow stage to retry
+        required: true
+        type: choice
+        options:
+          - plan
+          - revise
+          - implement
+          - split
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codex-issue-${{ github.event.issue.number || inputs.issue_number }}-${{ github.event.label.name || inputs.stage }}
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    name: Validate trigger and run Codex
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.stage != 'split') ||
+      github.event.label.name == 'needs-planning' ||
+      github.event.label.name == 'changes-requested' ||
+      github.event.label.name == 'approved-for-ai-build'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      action: ${{ steps.context.outputs.action }}
+      stage: ${{ steps.context.outputs.stage }}
+      issue_number: ${{ steps.context.outputs.issue_number }}
+      fingerprint: ${{ steps.context.outputs.fingerprint }}
+      marker: ${{ steps.context.outputs.marker }}
+      branch: ${{ steps.context.outputs.branch }}
+    steps:
+      - name: Check out trusted default branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate actor, state, and idempotency
+        id: context
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          AUTOMATION_ENABLED: ${{ vars.CODEX_AUTOMATION_ENABLED }}
+          ALLOWED_ACTORS: ${{ vars.CODEX_ALLOWED_ACTORS }}
+          DISPATCH_ISSUE: ${{ inputs.issue_number }}
+          DISPATCH_STAGE: ${{ inputs.stage }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const fs = require("node:fs");
+            const helpers = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/codex-workflow-state.mjs`);
+            const issueNumber = Number(context.payload.issue?.number || process.env.DISPATCH_ISSUE);
+            const label = context.payload.label?.name;
+            const stage = process.env.DISPATCH_STAGE || helpers.STAGES[label];
+            const actor = context.actor;
+
+            if (!issueNumber || !stage) {
+              core.setFailed("A valid issue number and stage are required.");
+              return;
+            }
+
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+            });
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+            const { data: workflowRun } = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            const { data: collaborator } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: actor,
+            });
+            const result = helpers.evaluateTrigger({
+              enabled: process.env.AUTOMATION_ENABLED === "true",
+              actor,
+              actorType: context.payload.sender?.type || "User",
+              allowedActors: (process.env.ALLOWED_ACTORS || "").split(",").map((value) => value.trim()).filter(Boolean),
+              permission: collaborator.permission,
+              issue,
+              comments,
+              requestedStage: stage,
+              cutoff: workflowRun.created_at,
+            });
+
+            core.setOutput("action", result.action);
+            core.setOutput("stage", stage);
+            core.setOutput("issue_number", String(issueNumber));
+            core.setOutput("fingerprint", result.digest || "");
+            core.setOutput("marker", result.marker || "");
+            core.setOutput("branch", `codex/issue-${issueNumber}`);
+            await core.summary.addHeading("Codex trigger decision").addRaw(`${result.action}: ${result.reason || stage}`).write();
+
+            if (result.action === "block") {
+              core.setFailed(result.reason);
+              return;
+            }
+            if (result.action !== "run") return;
+
+            if (stage === "implement") {
+              const head = `${context.repo.owner}:codex/issue-${issueNumber}`;
+              const pulls = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: "open",
+                head,
+              });
+              if (pulls.data.length > 0) {
+                core.setOutput("action", "skip");
+                await core.summary.addRaw(`Draft PR already exists: #${pulls.data[0].number}`).write();
+                return;
+              }
+              try {
+                await github.rest.repos.getBranch({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  branch: `codex/issue-${issueNumber}`,
+                });
+                core.setOutput("action", "block");
+                core.setFailed("The implementation branch already exists without an open PR; inspect it before retrying.");
+                return;
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            }
+
+            fs.writeFileSync("codex-input.json", JSON.stringify({
+              stage,
+              fingerprint: result.digest,
+              source: result.source,
+            }, null, 2));
+
+      - name: Preserve trusted patch validator
+        if: steps.context.outputs.action == 'run' && steps.context.outputs.stage == 'implement'
+        run: cp .github/scripts/codex-workflow-state.mjs "$RUNNER_TEMP/codex-workflow-state.mjs"
+
+      - name: Validate planning response schema compatibility
+        if: steps.context.outputs.action == 'run' && steps.context.outputs.stage != 'implement'
+        run: >-
+          node --input-type=module -e
+          "import fs from 'node:fs';
+          const {validateResponseSchemaCompatibility} = await import('./.github/scripts/codex-workflow-state.mjs');
+          validateResponseSchemaCompatibility(JSON.parse(fs.readFileSync('.github/codex/schemas/plan.json', 'utf8')));"
+
+      - name: Run Codex
+        id: codex
+        if: steps.context.outputs.action == 'run'
+        uses: openai/codex-action@b11346a6fa031e2e164ab4b7c7ea201afffd7d59 # v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          model: ${{ steps.context.outputs.stage == 'implement' && 'gpt-5.6-terra' || 'gpt-5.6-luna' }}
+          effort: ${{ steps.context.outputs.stage == 'implement' && 'medium' || 'low' }}
+          prompt-file: .github/codex/prompts/${{ steps.context.outputs.stage }}.md
+          output-file: codex-output.json
+          permission-profile: ${{ steps.context.outputs.stage == 'implement' && ':workspace' || ':read-only' }}
+          safety-strategy: drop-sudo
+          allow-users: ${{ vars.CODEX_ALLOWED_ACTORS }}
+          allow-bots: false
+          output-schema-file: ${{ steps.context.outputs.stage == 'implement' && '.github/codex/schemas/implementation-report.json' || '.github/codex/schemas/plan.json' }}
+          codex-args: '["--ephemeral"]'
+
+      - name: Create and validate implementation patch
+        if: steps.context.outputs.action == 'run' && steps.context.outputs.stage == 'implement'
+        run: |
+          git add -N --all
+          git reset -- codex-input.json codex-output.json
+          git diff --binary --output=codex.patch
+          node --input-type=module -e "import fs from 'node:fs'; const {validatePatch} = await import('file://${{ runner.temp }}/codex-workflow-state.mjs'); validatePatch(fs.readFileSync('codex.patch', 'utf8'))"
+
+      - name: Upload sanitized result
+        if: steps.context.outputs.action == 'run'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codex-result-${{ steps.context.outputs.issue_number }}-${{ steps.context.outputs.fingerprint }}
+          path: |
+            codex-input.json
+            codex-output.json
+            codex.patch
+          if-no-files-found: error
+          retention-days: 3
+
+  publish_plan:
+    name: Publish planning response
+    needs: generate
+    if: >-
+      needs.generate.result == 'success' &&
+      needs.generate.outputs.action == 'run' &&
+      (needs.generate.outputs.stage == 'plan' || needs.generate.outputs.stage == 'revise')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - name: Check out trusted publisher code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Download Codex result
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codex-result-${{ needs.generate.outputs.issue_number }}-${{ needs.generate.outputs.fingerprint }}
+
+      - name: Post response and advance state
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ISSUE_NUMBER: ${{ needs.generate.outputs.issue_number }}
+          STAGE: ${{ needs.generate.outputs.stage }}
+          MARKER: ${{ needs.generate.outputs.marker }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const fs = require("node:fs");
+            const helpers = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/codex-workflow-state.mjs`);
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            const parsed = JSON.parse(fs.readFileSync("codex-output.json", "utf8"));
+            helpers.validatePlanningResult(parsed);
+            const heading = process.env.STAGE === "plan"
+              ? `${helpers.PLAN_MARKER}\n## Codex implementation proposal`
+              : "<!-- codex-plan-amendment -->\n## Plan amendment";
+            const structured = parsed.classification === "split-required"
+              ? `\n${helpers.encodeSplitProposal(parsed, process.env.MARKER.match(/:([a-f0-9]{64}) -->$/)[1])}`
+              : "";
+            const body = `${process.env.MARKER}${structured}\n${heading}\n\n${parsed.markdown}${helpers.renderPlanningDetails(parsed)}`;
+            helpers.validatePublicText(body);
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body,
+            });
+            const transition = helpers.transitionFor(process.env.STAGE, parsed.classification);
+            for (const name of transition.remove) {
+              try {
+                await github.rest.issues.removeLabel({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            }
+            for (const name of transition.add) {
+              await github.rest.issues.addLabels({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, labels: [name] });
+            }
+
+  publish_implementation:
+    name: Validate and publish implementation
+    needs: generate
+    if: >-
+      needs.generate.result == 'success' &&
+      needs.generate.outputs.action == 'run' &&
+      needs.generate.outputs.stage == 'implement'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out current default branch without credentials
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download Codex result
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codex-result-${{ needs.generate.outputs.issue_number }}-${{ needs.generate.outputs.fingerprint }}
+
+      - name: Validate and apply patch
+        run: |
+          node --input-type=module -e "import fs from 'node:fs'; const {validatePatch,validatePublicText} = await import('./.github/scripts/codex-workflow-state.mjs'); validatePatch(fs.readFileSync('codex.patch', 'utf8')); validatePublicText(fs.readFileSync('codex-output.json', 'utf8'))"
+          git apply --check codex.patch
+          git apply codex.patch
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate implementation
+        run: |
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Commit implementation locally
+        env:
+          BRANCH_NAME: ${{ needs.generate.outputs.branch }}
+        run: |
+          git switch -c "$BRANCH_NAME"
+          git config user.name "codex-automation[bot]"
+          git config user.email "codex-automation[bot]@users.noreply.github.com"
+          git add -A
+          git reset -- codex-input.json codex-output.json codex.patch
+          git commit -m "Implement issue #${{ needs.generate.outputs.issue_number }}"
+
+      - name: Create short-lived publisher token
+        id: app_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.CODEX_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.CODEX_AUTOMATION_APP_PRIVATE_KEY }}
+
+      - name: Push implementation branch
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          BRANCH_NAME: ${{ needs.generate.outputs.branch }}
+        run: |
+          gh auth setup-git
+          git push origin "HEAD:refs/heads/$BRANCH_NAME"
+
+      - name: Open draft pull request and advance issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ISSUE_NUMBER: ${{ needs.generate.outputs.issue_number }}
+          BRANCH_NAME: ${{ needs.generate.outputs.branch }}
+          FINGERPRINT: ${{ needs.generate.outputs.fingerprint }}
+          MARKER: ${{ needs.generate.outputs.marker }}
+        with:
+          github-token: ${{ steps.app_token.outputs.token }}
+          script: |
+            const fs = require("node:fs");
+            const helpers = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/codex-workflow-state.mjs`);
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            const input = JSON.parse(fs.readFileSync("codex-input.json", "utf8"));
+            const report = JSON.parse(fs.readFileSync("codex-output.json", "utf8"));
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = `## Summary\n\n${report.summary}\n\n## Originating issue\n\nCloses #${issueNumber}\n\n## Validation\n\n${report.validation}\n\n## Accessibility\n\n${report.accessibility}\n\n## Documentation impact\n\n${report.documentationImpact}\n\n## Known limitations\n\n${report.limitations}\n\nAutomation run: ${runUrl}`;
+            const pull = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: helpers.implementationPullRequestTitle(issueNumber, input.source),
+              head: process.env.BRANCH_NAME,
+              base: context.payload.repository.default_branch,
+              body,
+              draft: true,
+            });
+
+            const transition = helpers.transitionFor("implement");
+            for (const name of transition.remove) {
+              try {
+                await github.rest.issues.removeLabel({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            }
+            for (const name of transition.add) {
+              await github.rest.issues.addLabels({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, labels: [name] });
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `${process.env.MARKER}\nImplementation draft: ${pull.data.html_url}\n\nApproved planning fingerprint: \`${process.env.FINGERPRINT}\`\n\nRun: ${runUrl}`,
+            });
+
+  publish_split:
+    name: Validate and publish approved split
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.stage == 'split') ||
+      (github.event_name == 'issues' && github.event.label.name == 'approved-for-split')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - name: Check out trusted split publisher code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Validate split actor, proposal, and fingerprint
+        id: split_context
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          AUTOMATION_ENABLED: ${{ vars.CODEX_AUTOMATION_ENABLED }}
+          ALLOWED_ACTORS: ${{ vars.CODEX_ALLOWED_ACTORS }}
+          DISPATCH_ISSUE: ${{ inputs.issue_number }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const helpers = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/codex-workflow-state.mjs`);
+            const issueNumber = Number(context.payload.issue?.number || process.env.DISPATCH_ISSUE);
+            const actor = context.actor;
+            if (!issueNumber) {
+              core.setFailed("A valid issue number is required.");
+              return;
+            }
+            const { data: issue } = await github.rest.issues.get({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber });
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+            const { data: collaborator } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: actor,
+            });
+            const result = helpers.evaluateTrigger({
+              enabled: process.env.AUTOMATION_ENABLED === "true",
+              actor,
+              actorType: context.payload.sender?.type || "User",
+              allowedActors: (process.env.ALLOWED_ACTORS || "").split(",").map((value) => value.trim()).filter(Boolean),
+              permission: collaborator.permission,
+              issue,
+              comments,
+              requestedStage: "split",
+            });
+            core.setOutput("action", result.action);
+            core.setOutput("issue_number", String(issueNumber));
+            core.setOutput("fingerprint", result.digest || "");
+            if (result.action === "block") core.setFailed(result.reason);
+
+      - name: Create short-lived split publisher token
+        if: steps.split_context.outputs.action == 'run'
+        id: split_app_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.CODEX_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.CODEX_AUTOMATION_APP_PRIVATE_KEY }}
+
+      - name: Create or reuse children and close confirmed parent
+        if: steps.split_context.outputs.action == 'run'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ISSUE_NUMBER: ${{ steps.split_context.outputs.issue_number }}
+          FINGERPRINT: ${{ steps.split_context.outputs.fingerprint }}
+        with:
+          github-token: ${{ steps.split_app_token.outputs.token }}
+          script: |
+            const state = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/codex-workflow-state.mjs`);
+            const publisher = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/codex-split-publisher.mjs`);
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            const { data: parent } = await github.rest.issues.get({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber });
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+            const proposal = state.approvedSplitProposal(comments);
+            state.validateSplitFingerprint(proposal, process.env.FINGERPRINT);
+            await publisher.publishSplit({
+              github,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              parent,
+              result: proposal.result,
+              digest: proposal.digest,
+            });
+
+  report_failure:
+    name: Report blocked automation
+    needs: [generate, publish_plan, publish_implementation, publish_split]
+    if: >-
+      always() &&
+      (needs.generate.result == 'failure' || needs.publish_plan.result == 'failure' || needs.publish_implementation.result == 'failure' || needs.publish_split.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Check out trusted failure reporter code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Post sanitized failure status
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ISSUE_NUMBER: ${{ needs.generate.outputs.issue_number || inputs.issue_number || github.event.issue.number }}
+          STAGE: ${{ needs.generate.outputs.stage || inputs.stage || github.event.label.name }}
+          FINGERPRINT: ${{ needs.generate.outputs.fingerprint }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const helpers = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/codex-workflow-state.mjs`);
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            if (!issueNumber) return;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const failureKey = process.env.FINGERPRINT || `run-${context.runId}`;
+            const failureMarker = `<!-- codex-automation-failure:${process.env.STAGE}:issue-${issueNumber}:${failureKey} -->`;
+            const body = `${failureMarker}\n## Codex automation blocked\n\nStage: **${process.env.STAGE}**\n\nReview the [workflow run](${runUrl}), resolve the reported failure, remove \`blocked\`, and reapply the stage label to retry. No credentials or model trace are included here.`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) => comment.body?.includes(failureMarker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body,
+              });
+            }
+            const transition = helpers.failureTransitionFor(process.env.STAGE);
+            for (const name of transition.remove) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name,
+                });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            }
+            for (const name of transition.add) {
+              await github.rest.issues.addLabels({ owner: context.repo.owner, repo: context.repo.repo, issue_number: issueNumber, labels: [name] });
+            }

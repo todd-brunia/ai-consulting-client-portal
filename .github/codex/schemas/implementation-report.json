@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "validation", "accessibility", "documentationImpact", "limitations"],
+  "properties": {
+    "summary": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "validation": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "accessibility": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "documentationImpact": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "limitations": { "type": "string", "minLength": 1, "maxLength": 2000 }
+  }
+}

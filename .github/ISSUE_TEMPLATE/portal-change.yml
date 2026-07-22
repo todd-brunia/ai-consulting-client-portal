@@ -1,0 +1,53 @@
+name: Portal change
+description: Propose a client-facing portal capability or experience change
+title: "[Portal]: "
+labels:
+  - needs-planning
+  - portal
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for client-facing behavior. AI will post a plan before implementation begins.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: What client or operator need should this change address?
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What should become clearer, safer, or easier?
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-behavior
+    attributes:
+      label: Current behavior or evidence
+      description: Include workflow evidence, screenshots, or reproduction steps.
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: What observable behavior must be true when complete?
+    validations:
+      required: true
+
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and tenant-boundary considerations
+      description: Note client data, permissions, retention, or provider boundaries.
+
+  - type: textarea
+    id: supporting-context
+    attributes:
+      label: Supporting context
+      description: Add relevant plans, links, diagrams, or prior decisions.

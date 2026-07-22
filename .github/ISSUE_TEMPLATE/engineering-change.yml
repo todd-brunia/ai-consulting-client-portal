@@ -1,0 +1,74 @@
+name: Engineering change
+description: Propose an internal application or code-quality change
+title: "[Engineering]: "
+labels:
+  - needs-planning
+  - engineering
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for application internals. AI will post a plan to the issue before any code changes begin.
+
+  - type: dropdown
+    id: change-type
+    attributes:
+      label: Change type
+      options:
+        - Architecture or refactoring
+        - Automated testing
+        - Dependency
+        - Security
+        - Performance engineering
+        - Developer experience
+        - Technical debt
+        - Internal bug
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: What technical limitation, risk, or maintenance problem should be addressed?
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What should become safer, simpler, faster, or easier to maintain?
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-behavior
+    attributes:
+      label: Current behavior or evidence
+      description: Include errors, affected code paths, measurements, or reproduction steps when applicable.
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Initial idea
+      description: Describe a possible technical direction, if one is already in mind.
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: What must be true for this issue to be complete?
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints or risks
+      description: Note compatibility, security, dependency, performance, or migration constraints.
+
+  - type: textarea
+    id: supporting-context
+    attributes:
+      label: Supporting context
+      description: Add relevant links, logs, diagrams, prior decisions, or documentation.
+

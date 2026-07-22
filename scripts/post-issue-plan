@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ $# -ne 1 || ! "$1" =~ ^[0-9]+$ ]]; then
+  echo "Usage: scripts/post-issue-plan <issue-number>" >&2
+  echo "Pass the Markdown proposal on standard input." >&2
+  exit 2
+fi
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "GitHub CLI is required. Install it and run: gh auth login" >&2
+  exit 1
+fi
+
+gh auth status --hostname github.com >/dev/null
+
+issue_number="$1"
+plan_file="$(mktemp)"
+comment_file="$(mktemp)"
+trap 'rm -f "$plan_file" "$comment_file"' EXIT
+
+cat >"$plan_file"
+
+if [[ ! -s "$plan_file" ]]; then
+  echo "The plan cannot be empty." >&2
+  exit 2
+fi
+
+{
+  echo '<!-- codex-implementation-plan -->'
+  echo '## Codex implementation proposal'
+  echo
+  cat "$plan_file"
+} >"$comment_file"
+
+gh issue comment "$issue_number" --body-file "$comment_file"
+
