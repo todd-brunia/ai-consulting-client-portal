@@ -30,6 +30,25 @@ container engine.
 No Vercel or hosted Supabase account is required. Stop local services with
 `npm run supabase:stop`.
 
+## Prepare integration-test data
+
+With the local Supabase stack running, prepare integration-test data by running
+the lifecycle stages in order:
+
+```bash
+npm run supabase:reset
+npm run supabase:lint
+npm run supabase:test:fixtures
+```
+
+The reset replays every tracked migration and removes data created during
+earlier local sessions. The remaining stages lint the schema and create two
+distinguishable test tenants. Fixture provisioning also replaces prior users
+with the fixture email addresses, making it safe to repeat after an interrupted
+local run.
+Fixture provisioning uses the local service-role key only inside the Node.js
+setup process; the key is not written to fixtures, output, or tracked files.
+
 ## Architecture boundaries
 
 The browser uses Supabase only for the authentication protocol. Application

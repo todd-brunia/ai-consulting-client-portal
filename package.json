@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
-    "supabase:reset": "supabase db reset"
+    "supabase:reset": "supabase db reset",
+    "supabase:lint": "supabase db lint --local --level warning --fail-on error",
+    "supabase:test:fixtures": "node scripts/setup-supabase-integration-fixtures.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
