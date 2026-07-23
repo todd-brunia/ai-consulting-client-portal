@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration:api": "node scripts/run-api-integration-tests.mjs",
     "test:integration:rls": "node scripts/run-rls-integration-tests.mjs",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
