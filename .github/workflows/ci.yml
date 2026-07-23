@@ -9,7 +9,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  validate:
+  fast-validation:
+    name: Fast validation
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -29,6 +30,70 @@ jobs:
         run: npm test
       - name: Production build
         run: npm run build
+
+  detect-supabase-changes:
+    name: Detect Supabase-relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      required: ${{ steps.detect.outputs.required }}
+    steps:
+      - name: Check out history without executing repository code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Detect relevant paths
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=false
+
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]] || ! git cat-file -e "$BASE_SHA^{commit}"; then
+            required=true
+          else
+            mapfile -t patterns < <(sed '/^[[:space:]]*$/d' .github/ci-supabase-paths.txt)
+            while IFS= read -r -d '' changed_path; do
+              case "$changed_path" in
+                .github/workflows/ci.yml|.github/ci-supabase-paths.txt)
+                  required=true
+                  break
+                  ;;
+              esac
+
+              for pattern in "${patterns[@]}"; do
+                if [[ "$changed_path" == $pattern ]]; then
+                  required=true
+                  break 2
+                fi
+              done
+            done < <(git diff --no-renames --name-only -z "$BASE_SHA" "$HEAD_SHA")
+          fi
+
+          echo "required=$required" >> "$GITHUB_OUTPUT"
+          if [[ "$required" == true ]]; then
+            echo "Supabase integration checks are required." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Supabase integration checks are intentionally skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  supabase-integration:
+    name: Supabase integration
+    needs: detect-supabase-changes
+    if: needs.detect-supabase-changes.outputs.required == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.18.0
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
       - name: Start isolated Supabase stack
         run: npm run supabase:start > /dev/null
       - name: Reset database from tracked migrations
@@ -44,3 +109,38 @@ jobs:
       - name: Stop and remove Supabase stack
         if: always()
         run: npm run supabase:stop -- --no-backup > /dev/null
+
+  ci-gate:
+    name: CI Gate
+    if: always()
+    needs:
+      - fast-validation
+      - detect-supabase-changes
+      - supabase-integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required checks
+        env:
+          FAST_RESULT: ${{ needs.fast-validation.result }}
+          DETECTOR_RESULT: ${{ needs.detect-supabase-changes.result }}
+          INTEGRATION_REQUIRED: ${{ needs.detect-supabase-changes.outputs.required }}
+          INTEGRATION_RESULT: ${{ needs.supabase-integration.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$FAST_RESULT" != success ]]; then
+            echo "Fast validation result: $FAST_RESULT" >&2
+            exit 1
+          fi
+          if [[ "$DETECTOR_RESULT" != success ]]; then
+            echo "Path detector result: $DETECTOR_RESULT" >&2
+            exit 1
+          fi
+          case "$INTEGRATION_REQUIRED:$INTEGRATION_RESULT" in
+            true:success|false:skipped) ;;
+            *)
+              echo "Supabase integration contract: required=$INTEGRATION_REQUIRED result=$INTEGRATION_RESULT" >&2
+              exit 1
+              ;;
+          esac
+          echo "CI gate passed with Supabase integration: $INTEGRATION_RESULT"
