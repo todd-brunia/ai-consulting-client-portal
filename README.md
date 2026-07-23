@@ -59,6 +59,26 @@ GitHub Actions owns the disposable CI lifecycle: it starts an isolated stack,
 replays tracked migrations, runs the same checks, and removes the stack in an
 unconditional cleanup step.
 
+## Continuous integration checks
+
+Every pull request and push to `main` runs linting, type checking, unit tests,
+and the production build. A read-only filename detector separately decides
+whether to start the Supabase integration job. Database migrations, Supabase
+and server authorization code, API routes, integration fixtures and runners,
+dependency manifests, test configuration, and CI detector changes require the
+full integration suite. Clearly unrelated documentation, styles, static assets,
+and UI-only changes skip the Supabase job.
+
+The detector compares the complete before/after range without executing changed
+repository code. It disables rename detection so both sides of a rename are
+considered. Unknown or unavailable base revisions conservatively require the
+integration suite. Relevant patterns are maintained in
+`.github/ci-supabase-paths.txt` and covered by unit tests.
+
+`CI Gate` is the stable aggregate result for future branch protection. It
+requires fast validation and path detection to succeed, and accepts Supabase
+integration only when it either succeeds or is intentionally skipped.
+
 ## Architecture boundaries
 
 The browser uses Supabase only for the authentication protocol. Application

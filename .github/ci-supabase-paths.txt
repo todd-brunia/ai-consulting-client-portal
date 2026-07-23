@@ -1,0 +1,17 @@
+supabase/**
+src/app/api/**
+src/app/login/**
+src/app/page.tsx
+src/lib/json-api*
+src/lib/supabase/**
+src/proxy.ts
+tests/integration/**
+scripts/*integration*
+scripts/*supabase*
+package.json
+package-lock.json
+vitest.config.mts
+vitest.integration.config.mts
+next.config.*
+tsconfig.json
+.env.local.example
