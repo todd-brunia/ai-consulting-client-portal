@@ -56,6 +56,23 @@ async function waitForApplication(url, child, output) {
   throw new Error(`Next.js did not become ready:\n${output.join("")}`);
 }
 
+async function stopApplication(child) {
+  if (child.exitCode !== null) return;
+
+  const signalProcessGroup = (signal) => {
+    if (process.platform === "win32") child.kill(signal);
+    else process.kill(-child.pid, signal);
+  };
+
+  signalProcessGroup("SIGTERM");
+  const stopped = await Promise.race([
+    new Promise((resolve) => child.once("exit", () => resolve(true))),
+    new Promise((resolve) => setTimeout(() => resolve(false), 5_000)),
+  ]);
+
+  if (!stopped) signalProcessGroup("SIGKILL");
+}
+
 const status = readLocalSupabaseStatus();
 const fixtures = await provisionIntegrationFixtures({
   apiUrl: status.API_URL,
@@ -84,15 +101,20 @@ for (const secretName of [
 const port = await findAvailablePort();
 const applicationUrl = `http://127.0.0.1:${port}`;
 const applicationOutput = [];
-const application = spawn("npx", ["next", "dev", "--port", String(port)], {
-  env: {
-    ...testEnvironment,
-    NEXT_PUBLIC_SUPABASE_URL: status.API_URL,
-    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
-      status.PUBLISHABLE_KEY ?? status.ANON_KEY,
+const application = spawn(
+  process.execPath,
+  ["node_modules/next/dist/bin/next", "dev", "--port", String(port)],
+  {
+    detached: true,
+    env: {
+      ...testEnvironment,
+      NEXT_PUBLIC_SUPABASE_URL: status.API_URL,
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
+        status.PUBLISHABLE_KEY ?? status.ANON_KEY,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
   },
-  stdio: ["ignore", "pipe", "pipe"],
-});
+);
 
 application.stdout.on("data", (chunk) => applicationOutput.push(chunk));
 application.stderr.on("data", (chunk) => applicationOutput.push(chunk));
@@ -120,5 +142,5 @@ try {
     },
   );
 } finally {
-  application.kill("SIGTERM");
+  await stopApplication(application);
 }
