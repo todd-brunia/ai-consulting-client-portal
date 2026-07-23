@@ -30,24 +30,34 @@ container engine.
 No Vercel or hosted Supabase account is required. Stop local services with
 `npm run supabase:stop`.
 
-## Prepare integration-test data
+## Run application and database integration checks
 
-With the local Supabase stack running, prepare integration-test data by running
-the lifecycle stages in order:
+Prerequisites:
+
+- Node.js 24.18.0 with project dependencies installed.
+- A running Docker-compatible container engine.
+- Enough local Docker resources to run the Supabase development stack.
+- The local Supabase stack started with `npm run supabase:start`.
+
+Run the complete integration check suite with:
 
 ```bash
-npm run supabase:reset
-npm run supabase:lint
-npm run supabase:test:fixtures
+npm run test:integration
 ```
 
-The reset replays every tracked migration and removes data created during
-earlier local sessions. The remaining stages lint the schema and create two
-distinguishable test tenants. Fixture provisioning also replaces prior users
-with the fixture email addresses, making it safe to repeat after an interrupted
-local run.
-Fixture provisioning uses the local service-role key only inside the Node.js
-setup process; the key is not written to fixtures, output, or tracked files.
+The command lints the migrated schema, replaces the deterministic fixtures, and
+runs the authenticated RLS and JSON:API endpoint suites. It leaves the local
+stack running for inspection; stop it afterward with `npm run supabase:stop`,
+or use `npm run supabase:stop -- --no-backup` to remove its local data.
+
+Each check is named in the output so schema, fixture, RLS, and endpoint failures
+remain distinguishable. Supabase status output is captured where credentials
+are needed; fixture provisioning uses the local service-role key only inside
+the setup process and does not pass it to application or tenant-assertion code.
+
+GitHub Actions owns the disposable CI lifecycle: it starts an isolated stack,
+replays tracked migrations, runs the same checks, and removes the stack in an
+unconditional cleanup step.
 
 ## Architecture boundaries
 
