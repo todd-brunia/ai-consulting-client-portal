@@ -50,7 +50,13 @@ for (const secretName of [
 
 execFileSync(
   "npx",
-  ["vitest", "run", "--config", "vitest.integration.config.mts"],
+  [
+    "vitest",
+    "run",
+    "tests/integration/rls-tenant-isolation.test.mjs",
+    "--config",
+    "vitest.integration.config.mts",
+  ],
   {
     env: {
       ...testEnvironment,
