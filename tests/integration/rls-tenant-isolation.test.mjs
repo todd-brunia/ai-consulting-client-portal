@@ -23,6 +23,14 @@ function createAuthenticatedClient() {
   });
 }
 
+const machineSecurityTables = [
+  "agent_integrations",
+  "agent_credentials",
+  "agent_capabilities",
+  "agent_organization_grants",
+  "agent_engagement_grants",
+];
+
 test("does not expose service-role credentials to tenant assertions", () => {
   expect(process.env.SERVICE_ROLE_KEY).toBeUndefined();
   expect(process.env.SUPABASE_SERVICE_ROLE_KEY).toBeUndefined();
@@ -116,4 +124,14 @@ describe.each(tenantFixtures)("$key PostgreSQL tenant isolation", (fixture) => {
     expect(otherError).toBeNull();
     expect(otherRows).toEqual([]);
   });
+
+  test.each(machineSecurityTables)(
+    "cannot read protected machine table %s",
+    async (table) => {
+      const { data, error } = await client.from(table).select("*");
+
+      expect(data).toBeNull();
+      expect(error?.message).toMatch(/permission denied/i);
+    },
+  );
 });
