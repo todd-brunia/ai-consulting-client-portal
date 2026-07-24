@@ -1,0 +1,29 @@
+meta {
+  name: Unauthenticated
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/engagements
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/vnd.api+json
+}
+
+tests {
+  test("returns the generic JSON:API authentication error", function () {
+    expect(res.getStatus()).to.equal(401);
+    expect(res.getHeader("content-type")).to.equal("application/vnd.api+json");
+    expect(res.getBody()).to.eql({
+      errors: [{
+        status: "401",
+        code: "unauthorized",
+        title: "Authentication required"
+      }]
+    });
+  });
+}

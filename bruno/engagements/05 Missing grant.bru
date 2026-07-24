@@ -1,0 +1,27 @@
+meta {
+  name: Missing grant
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/v1/engagements
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/vnd.api+json
+  Authorization: Bearer {{process.env.PORTAL_NO_GRANT_API_KEY}}
+}
+
+tests {
+  test("returns an empty JSON:API collection", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getHeader("content-type")).to.equal("application/vnd.api+json");
+    expect(res.getBody()).to.eql({
+      jsonapi: { version: "1.1" },
+      data: []
+    });
+  });
+}

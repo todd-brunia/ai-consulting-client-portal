@@ -33,6 +33,10 @@ container engine.
 No Vercel or hosted Supabase account is required. Stop local services with
 `npm run supabase:stop`.
 
+For supported interactive and CLI testing of the machine API, use the
+repository-owned Bruno collection described in
+[`docs/bruno-local-api.md`](docs/bruno-local-api.md).
+
 ## Run application and database integration checks
 
 Prerequisites:

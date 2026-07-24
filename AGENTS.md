@@ -39,6 +39,10 @@ permission to push, open a pull request, comment, or change labels.
 - Never expose service-role credentials to browser code.
 - Keep generated content separate from approved external actions.
 - Do not add hosted Vercel or Supabase configuration until it is approved.
+- Keep the Bruno collection, environments, configuration, tests, and
+  documentation synchronized whenever application API routes, authentication,
+  authorization, headers, media types, request or response schemas, error
+  behavior, fixtures, or local API-testing prerequisites change.
 
 ## Required Validation
 
