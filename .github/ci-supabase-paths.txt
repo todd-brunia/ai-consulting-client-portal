@@ -3,11 +3,14 @@ src/app/api/**
 src/app/login/**
 src/app/page.tsx
 src/lib/json-api*
+src/lib/agents/**
+src/lib/engagements/**
 src/lib/supabase/**
 src/proxy.ts
 tests/integration/**
 scripts/*integration*
 scripts/*supabase*
+scripts/setup-machine-signing-key.mjs
 package.json
 package-lock.json
 vitest.config.mts

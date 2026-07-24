@@ -67,10 +67,11 @@ unconditional cleanup step.
 Every pull request and push to `main` runs linting, type checking, unit tests,
 and the production build. A read-only filename detector separately decides
 whether to start the Supabase integration job. Database migrations, Supabase
-and server authorization code, API routes, integration fixtures and runners,
-dependency manifests, test configuration, and CI detector changes require the
-full integration suite. Clearly unrelated documentation, styles, static assets,
-and UI-only changes skip the Supabase job.
+and server authorization code, machine credentials and grants, engagement data
+access, API routes, integration fixtures and runners, dependency manifests, test
+configuration, and CI detector changes require the full integration suite.
+Clearly unrelated documentation, styles, static assets, and UI-only changes
+skip the Supabase job.
 
 The detector compares the complete before/after range without executing changed
 repository code. It disables rename detection so both sides of a rename are
