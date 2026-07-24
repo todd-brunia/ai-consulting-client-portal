@@ -33,12 +33,22 @@ errors exclude complete keys and verification hashes.
 
 The initial capability vocabulary contains only `engagements:read`.
 Organization and engagement grants are stored separately and default to no
-access. This issue establishes their data model but does not connect them to the
-engagements API or decide how machine identity reaches PostgreSQL RLS.
+access. A verified credential can be resolved into a transport-neutral machine
+authorization context containing only its stable integration ID, capabilities,
+and a copied application-layer grant snapshot. Engagement reads require the
+`engagements:read` capability and both the requested organization and engagement
+to appear in that snapshot. Authentication failure and authorization denial are
+separate, generic outcomes that do not disclose principal or resource details.
 
-Database/RLS enforcement, shared human-versus-machine authorization context,
-the engagements route, rate limiting, hosted key administration, rotation
-overlap, machine writes, and public exposure remain separate governed work.
+Human and machine principals form an explicit discriminated union. Human
+engagement access continues through the existing human policy and Supabase
+session path; it is never converted into a machine identity.
+
+Database/RLS enforcement, the engagements route, rate limiting, hosted key
+administration, rotation overlap, machine writes, and public exposure remain
+separate governed work. The authorization context intentionally contains no
+HTTP objects or credentials, Supabase clients or tokens, internally minted
+JWTs, database connections, roles, transactions, or execution strategy.
 
 ## Local test safety
 
