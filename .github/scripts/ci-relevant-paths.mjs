@@ -25,7 +25,12 @@ function globToRegExp(glob) {
 export function requiresSupabaseIntegration(
   changedPaths,
   patterns = readRelevantPatterns(),
+  { revisionsKnown = true, revisionsAvailable = true } = {},
 ) {
+  if (!revisionsKnown || !revisionsAvailable) {
+    return true;
+  }
+
   const matchers = patterns.map(globToRegExp);
   return changedPaths.some(
     (path) =>
