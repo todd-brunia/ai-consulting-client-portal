@@ -6,6 +6,7 @@ import {
 import type {
   AgentCredentialMetadata,
   AgentCredentialRepository,
+  AgentCredentialVerificationRepository,
 } from "./types";
 
 const keyPrefix = "portal_agent";
@@ -191,7 +192,7 @@ export async function issueAgentCredential(
 }
 
 export async function verifyAgentCredential(
-  repository: AgentCredentialRepository,
+  repository: AgentCredentialVerificationRepository,
   transport: CredentialTransport,
   dependencies: CredentialServiceDependencies = {},
 ): Promise<VerifyAgentCredentialResult> {

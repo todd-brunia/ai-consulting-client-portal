@@ -41,12 +41,16 @@ export type CreateAgentCredentialInput = {
   expiresAt: Date;
 };
 
-export interface AgentCredentialRepository {
-  createCredential(
-    input: CreateAgentCredentialInput,
-  ): Promise<AgentCredentialRecord>;
+export interface AgentCredentialVerificationRepository {
   findCredentialByPrefix(
     lookupPrefix: string,
   ): Promise<AgentCredentialRecord | null>;
   recordCredentialUse(credentialId: string, usedAt: Date): Promise<void>;
+}
+
+export interface AgentCredentialRepository
+  extends AgentCredentialVerificationRepository {
+  createCredential(
+    input: CreateAgentCredentialInput,
+  ): Promise<AgentCredentialRecord>;
 }
