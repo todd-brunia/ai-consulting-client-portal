@@ -1,9 +1,23 @@
-# Machine credential foundation
+# Machine authentication safeguards
 
 The portal treats an `AgentIntegration` as a named machine principal. It is not
 a human user, a Supabase Auth identity, or an identity that may impersonate
 either. The local `GET /api/v1/engagements` endpoint accepts portal-issued
 machine credentials for read-only access.
+
+## Browser and server boundary
+
+The browser uses Supabase only for the human authentication protocol. It does
+not create, store, verify, or send machine credentials, and it never receives a
+service-role credential, the machine JWT signing key, or an internally minted
+machine token.
+
+Trusted server code handles the machine path: it verifies a bearer credential,
+loads current authorization metadata, and makes the engagement query through a
+narrow machine database role. The local service-role credential is limited to
+server-side fixture provisioning and credential verification/authorization
+metadata. It is not used for engagement reads and must never be returned to a
+browser or machine caller.
 
 ## Credential contract
 
@@ -16,7 +30,8 @@ portal_agent_<non-secret lookup prefix>_<random secret>
 The complete key is returned only by credential creation. PostgreSQL stores the
 lookup prefix, a salted scrypt verification value, the owning integration,
 creation and expiration times, last-use time, and revocation time. It never
-stores a recoverable key.
+stores a recoverable key. Treat the returned value as a secret: do not commit,
+log, copy into browser code, or expose it in API responses after creation.
 
 Machine credentials are accepted only from:
 
@@ -28,6 +43,15 @@ Query parameters, form fields, and cookies are not supported credential
 transports. Verification returns a single generic invalid result for malformed,
 unknown, expired, revoked, and incorrect credentials. Returned metadata and
 errors exclude complete keys and verification hashes.
+
+### Lifecycle and revocation
+
+Credentials have an owning integration and explicit creation and expiration
+times. Revocation is recorded separately, so a revoked or expired credential is
+rejected on the next request. The HTTP integration verifies the external key
+and rebuilds the machine principal for every request; it does not cache a
+principal or internal token across requests. This preserves immediate rejection
+when the external credential is revoked or expires.
 
 ## Capabilities and grants
 
@@ -59,11 +83,11 @@ PostgreSQL role, and the stable `machine_integration_id`. It never contains
 capabilities, organization or engagement grants, caller scope, the external API
 key, or a human user identity.
 
-The application-owned ES256 private key must be imported into the Supabase
-project's current JWT Signing Keys system. Server code supplies the short-lived
-token through the supported Supabase client `accessToken` option. The key and
-token remain server-only and must not be logged or returned. This design does
-not use the deprecated legacy JWT secret or a service-role query.
+The application-owned ES256 private key is configured locally for the Supabase
+JWT Signing Keys system. Server code supplies the short-lived token through the
+supported Supabase client `accessToken` option. The key and token remain
+server-only and must not be logged or returned. This design does not use the
+deprecated legacy JWT secret or a service-role query.
 
 PostgreSQL assigns the token's narrowly privileged `portal_machine` role. RLS
 validates the expected machine claims and uses a locked-down helper to join the
@@ -121,6 +145,16 @@ they cannot alter or disclose details through the API response.
 These events use local server logging only. Hosted monitoring, retention,
 alerting, rate limiting, and public operational controls remain deferred.
 
+## Validation coverage
+
+Unit tests cover credential verification, machine authorization resolution,
+the short-lived database token, and the allowlisted audit-event contract.
+Supabase integration checks cover the machine RLS boundary and authenticated
+JSON:API behavior, including capability and grant denials, revoked and expired
+credentials, and the separation of human and machine access. CI runs the full
+integration suite whenever machine credentials, grants, authorization, data
+access, API routes, integration fixtures, or their runners change.
+
 ### Local signing setup
 
 Starting the local stack generates an untracked ES256 signing key when one does
@@ -136,15 +170,12 @@ changing the key. Copy the private JWK JSON into the server-only
 `MACHINE_JWT_PRIVATE_JWK` value in `.env.local`; never use a `NEXT_PUBLIC_`
 prefix.
 
-For hosted Supabase, import the same application-controlled public/private JWK
-through the project's JWT Signing Keys workflow and rotate it into use. Hosted
-secret configuration and rotation are intentionally not automated here and
-must be completed before public machine access.
+## Deferred production controls
 
-References:
-
-- [Supabase JWT signing keys](https://supabase.com/docs/guides/auth/signing-keys)
-- [Using custom JWTs](https://supabase.com/docs/guides/auth/jwts#using-custom-or-third-party-jwts)
+This repository does not provide hosted credential administration, secret
+configuration, key rotation or rotation overlap, monitoring, retention,
+alerting, rate limiting, public machine API exposure, or machine writes. Those
+controls require separately governed work before any public machine access.
 
 ## Local test safety
 

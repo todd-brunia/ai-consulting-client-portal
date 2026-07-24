@@ -90,6 +90,11 @@ data passes through server-rendered routes or `/api/v1`, where server-side
 authorization and PostgreSQL RLS both constrain access. JSON:API formatting is
 kept at the HTTP boundary.
 
+Machine API-key authentication is a separate, read-only server-side path. See
+[Machine authentication safeguards](docs/machine-credentials.md) for the
+credential boundary, grants, audit events, local signing setup, and deferred
+production controls.
+
 Stripe, agreement providers, production deployment, and AI workflows are
 deliberately deferred.
 
