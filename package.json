@@ -13,7 +13,7 @@
     "test:integration": "node scripts/run-integration-suite.mjs",
     "test:integration:api": "node scripts/run-api-integration-tests.mjs",
     "test:integration:rls": "node scripts/run-rls-integration-tests.mjs",
-    "supabase:start": "supabase start",
+    "supabase:start": "node scripts/setup-machine-signing-key.mjs && supabase start",
     "supabase:stop": "supabase stop",
     "supabase:reset": "supabase db reset",
     "supabase:lint": "supabase db lint --local --level warning --fail-on error",
@@ -22,6 +22,7 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.8",
+    "jose": "^6.2.4",
     "next": "16.2.11",
     "react": "19.2.4",
     "react-dom": "19.2.4"

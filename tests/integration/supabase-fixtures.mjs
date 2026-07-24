@@ -110,6 +110,72 @@ async function provisionTenant(admin, fixture) {
   };
 }
 
+async function provisionMachineIntegration(
+  admin,
+  fixture,
+  {
+    suffix = "allowed",
+    capability = true,
+    organizationGrant = true,
+    engagementGrant = true,
+  } = {},
+) {
+  const integrationName =
+    `${fixture.key} deterministic machine ${suffix}`;
+  const { error: cleanupError } = await admin
+    .from("agent_integrations")
+    .delete()
+    .eq("name", integrationName);
+
+  if (cleanupError) {
+    throw new Error(
+      `Could not reset ${fixture.key} machine integration: ${cleanupError.message}`,
+    );
+  }
+
+  const { data: integration, error: integrationError } = await admin
+    .from("agent_integrations")
+    .insert({ name: integrationName })
+    .select("id")
+    .single();
+
+  if (integrationError) {
+    throw new Error(
+      `Could not create ${fixture.key} machine integration: ${integrationError.message}`,
+    );
+  }
+
+  const fixtureRows = [];
+  if (capability) {
+    fixtureRows.push(admin.from("agent_capabilities").insert({
+      agent_integration_id: integration.id,
+      capability: "engagements:read",
+    }));
+  }
+  if (organizationGrant) {
+    fixtureRows.push(admin.from("agent_organization_grants").insert({
+      agent_integration_id: integration.id,
+      organization_id: fixture.organizationId,
+    }));
+  }
+  if (engagementGrant) {
+    fixtureRows.push(admin.from("agent_engagement_grants").insert({
+      agent_integration_id: integration.id,
+      engagement_id: fixture.engagementId,
+    }));
+  }
+  const results = await Promise.all(fixtureRows);
+  const fixtureError = results.find(({ error }) => error)?.error;
+
+  if (fixtureError) {
+    throw new Error(
+      `Could not grant ${fixture.key} machine access: ${fixtureError.message}`,
+    );
+  }
+
+  return integration.id;
+}
+
 export async function provisionIntegrationFixtures({ apiUrl, serviceRoleKey }) {
   if (!apiUrl || !serviceRoleKey) {
     throw new Error("Local Supabase API URL and service-role key are required");
@@ -119,7 +185,29 @@ export async function provisionIntegrationFixtures({ apiUrl, serviceRoleKey }) {
   const provisioned = [];
 
   for (const fixture of tenantFixtures) {
-    provisioned.push(await provisionTenant(admin, fixture));
+    const tenant = await provisionTenant(admin, fixture);
+    provisioned.push({
+      ...tenant,
+      machineIntegrationId: await provisionMachineIntegration(
+        admin,
+        tenant,
+      ),
+      machineWithoutCapabilityId:
+        await provisionMachineIntegration(admin, tenant, {
+          suffix: "without capability",
+          capability: false,
+        }),
+      machineWithoutOrganizationGrantId:
+        await provisionMachineIntegration(admin, tenant, {
+          suffix: "without organization grant",
+          organizationGrant: false,
+        }),
+      machineWithoutEngagementGrantId:
+        await provisionMachineIntegration(admin, tenant, {
+          suffix: "without engagement grant",
+          engagementGrant: false,
+        }),
+    });
   }
 
   return Object.fromEntries(
