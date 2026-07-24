@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { provisionIntegrationFixtures } from "../tests/integration/supabase-fixtures.mjs";
 
@@ -74,6 +75,14 @@ async function stopApplication(child) {
 }
 
 const status = readLocalSupabaseStatus();
+const machinePrivateJwk = JSON.parse(
+  readFileSync("supabase/signing_keys.json", "utf8"),
+).find((key) => key.alg === "ES256" && key.d);
+if (!machinePrivateJwk) {
+  throw new Error(
+    "The local machine signing-key file has no private ES256 key",
+  );
+}
 const fixtures = await provisionIntegrationFixtures({
   apiUrl: status.API_URL,
   serviceRoleKey: status.SERVICE_ROLE_KEY,
@@ -85,6 +94,15 @@ const fixtureIdentities = Object.fromEntries(
       userId: fixture.userId,
       organizationId: fixture.organizationId,
       engagementId: fixture.engagementId,
+      machineApiKey: fixture.machineApiKey,
+      machineWithoutCapabilityApiKey:
+        fixture.machineWithoutCapabilityApiKey,
+      machineWithoutOrganizationGrantApiKey:
+        fixture.machineWithoutOrganizationGrantApiKey,
+      machineWithoutEngagementGrantApiKey:
+        fixture.machineWithoutEngagementGrantApiKey,
+      revokedMachineApiKey: fixture.revokedMachineApiKey,
+      expiredMachineApiKey: fixture.expiredMachineApiKey,
     },
   ]),
 );
@@ -94,6 +112,7 @@ for (const secretName of [
   "SERVICE_ROLE_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "SUPABASE_SECRET_KEY",
+  "MACHINE_JWT_PRIVATE_JWK",
 ]) {
   delete testEnvironment[secretName];
 }
@@ -111,6 +130,9 @@ const application = spawn(
       NEXT_PUBLIC_SUPABASE_URL: status.API_URL,
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
         status.PUBLISHABLE_KEY ?? status.ANON_KEY,
+      SUPABASE_SECRET_KEY:
+        status.SECRET_KEY ?? status.SERVICE_ROLE_KEY,
+      MACHINE_JWT_PRIVATE_JWK: JSON.stringify(machinePrivateJwk),
     },
     stdio: ["ignore", "pipe", "pipe"],
   },

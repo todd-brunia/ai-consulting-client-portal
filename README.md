@@ -11,6 +11,7 @@ not a production portal or transaction system.
 - Tenant-aware organizations, memberships, and engagements with RLS
 - A server-rendered authenticated workspace
 - A versioned JSON:API engagements endpoint
+- Read-only portal API-key authentication for machine engagement access
 - Vitest, ESLint, type checking, builds, and GitHub Actions
 
 ## Run the full stack locally
@@ -20,8 +21,10 @@ container engine.
 
 1. Install dependencies: `npm install`
 2. Start Supabase: `npm run supabase:start`
-3. Copy `.env.local.example` to `.env.local` and replace the publishable key
-   with the value printed by `supabase start`.
+3. Copy `.env.local.example` to `.env.local`. Replace the publishable and
+   server-only secret keys with the values printed by `supabase start`, and
+   copy the private JWK from the ignored `supabase/signing_keys.json` file into
+   the server-only `MACHINE_JWT_PRIVATE_JWK` value.
 4. Reset the local database: `npm run supabase:reset`
 5. Start Next.js: `npm run dev`
 6. Open `http://localhost:3000`, create a local account, and inspect the sample

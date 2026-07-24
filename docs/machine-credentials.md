@@ -2,8 +2,8 @@
 
 The portal treats an `AgentIntegration` as a named machine principal. It is not
 a human user, a Supabase Auth identity, or an identity that may impersonate
-either. This local-first foundation does not expose a machine-accessible API
-route yet.
+either. The local `GET /api/v1/engagements` endpoint accepts portal-issued
+machine credentials for read-only access.
 
 ## Credential contract
 
@@ -44,11 +44,11 @@ Human and machine principals form an explicit discriminated union. Human
 engagement access continues through the existing human policy and Supabase
 session path; it is never converted into a machine identity.
 
-The machine-facing engagements route, rate limiting, hosted key administration,
-rotation overlap, machine writes, and public exposure remain separate governed
-work. The authorization context itself intentionally contains no HTTP objects
-or credentials, Supabase clients or tokens, internally minted JWTs, database
-connections, roles, transactions, or execution strategy.
+Rate limiting, hosted key administration, rotation overlap, machine writes, and
+public exposure remain separate governed work. The authorization context itself
+intentionally contains no HTTP objects or credentials, Supabase clients or
+tokens, internally minted JWTs, database connections, roles, transactions, or
+execution strategy.
 
 ## Machine database boundary
 
@@ -75,10 +75,29 @@ credential or grant tables and no write privileges.
 Human sessions continue to use the existing `authenticated` policies. Machine
 and human policies are separate and independently tested.
 
-The future HTTP integration must verify the external portal API key and resolve
-a fresh machine principal on every request before calling this database
-boundary. It must not cache the principal or internal token across requests;
-that preserves immediate rejection of revoked or expired external credentials.
+The HTTP integration verifies the external portal API key and resolves a fresh
+machine principal on every request before calling this database boundary. It
+does not cache the principal or internal token across requests; that preserves
+immediate rejection of revoked or expired external credentials.
+
+## Engagements API behavior
+
+Human requests without a bearer credential retain the existing Supabase-session
+path. Machine requests use `Authorization: Bearer <portal-issued-api-key>`.
+Requests containing both a valid human session and any bearer attempt are
+rejected rather than choosing one identity.
+
+Missing, malformed, unknown, expired, and revoked authentication all return the
+same generic JSON:API `401` document. A valid machine without
+`engagements:read` receives a generic `403`. A capable machine receives `200`
+with the existing JSON:API collection shape, and RLS limits rows to current
+organization and engagement grants. No matching grants returns an empty
+collection.
+
+A server-only project secret is used only to verify credential hashes and read
+current authorization metadata. Engagement data is never queried with that
+secret; it continues through the short-lived `portal_machine` token and RLS
+boundary.
 
 ### Local signing setup
 

@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { createHash, scryptSync } from "node:crypto";
 
 const testPassword = "local-integration-only-password";
 
@@ -118,6 +119,7 @@ async function provisionMachineIntegration(
     capability = true,
     organizationGrant = true,
     engagementGrant = true,
+    credentialStatus = "valid",
   } = {},
 ) {
   const integrationName =
@@ -173,7 +175,61 @@ async function provisionMachineIntegration(
     );
   }
 
-  return integration.id;
+  const lookupPrefix = createHash("sha256")
+    .update(`${integrationName}:lookup`)
+    .digest("hex")
+    .slice(0, 16);
+  const secret = createHash("sha256")
+    .update(`${integrationName}:secret`)
+    .digest("base64url");
+  const apiKey = `portal_agent_${lookupPrefix}_${secret}`;
+  const salt = createHash("sha256")
+    .update(`${integrationName}:salt`)
+    .digest("base64url");
+  const derivedKey = scryptSync(apiKey, salt, 32, {
+    N: 16_384,
+    r: 8,
+    p: 1,
+    maxmem: 32 * 1024 * 1024,
+  });
+  const secretHash = [
+    "scrypt",
+    16_384,
+    8,
+    1,
+    salt,
+    derivedKey.toString("base64url"),
+  ].join("$");
+  const createdAt =
+    credentialStatus === "expired"
+      ? "2020-01-01T00:00:00.000Z"
+      : "2026-01-01T00:00:00.000Z";
+  const expiresAt =
+    credentialStatus === "expired"
+      ? "2020-01-02T00:00:00.000Z"
+      : "2099-01-01T00:00:00.000Z";
+  const revokedAt =
+    credentialStatus === "revoked"
+      ? "2026-01-02T00:00:00.000Z"
+      : null;
+  const { error: credentialError } = await admin
+    .from("agent_credentials")
+    .insert({
+      agent_integration_id: integration.id,
+      lookup_prefix: lookupPrefix,
+      secret_hash: secretHash,
+      created_at: createdAt,
+      expires_at: expiresAt,
+      revoked_at: revokedAt,
+    });
+
+  if (credentialError) {
+    throw new Error(
+      `Could not create ${fixture.key} machine credential: ${credentialError.message}`,
+    );
+  }
+
+  return { integrationId: integration.id, apiKey };
 }
 
 export async function provisionIntegrationFixtures({ apiUrl, serviceRoleKey }) {
@@ -186,27 +242,59 @@ export async function provisionIntegrationFixtures({ apiUrl, serviceRoleKey }) {
 
   for (const fixture of tenantFixtures) {
     const tenant = await provisionTenant(admin, fixture);
+    const allowedMachine = await provisionMachineIntegration(
+      admin,
+      tenant,
+    );
+    const machineWithoutCapability =
+      await provisionMachineIntegration(admin, tenant, {
+        suffix: "without capability",
+        capability: false,
+      });
+    const machineWithoutOrganizationGrant =
+      await provisionMachineIntegration(admin, tenant, {
+        suffix: "without organization grant",
+        organizationGrant: false,
+      });
+    const machineWithoutEngagementGrant =
+      await provisionMachineIntegration(admin, tenant, {
+        suffix: "without engagement grant",
+        engagementGrant: false,
+      });
+    const revokedMachine = await provisionMachineIntegration(
+      admin,
+      tenant,
+      {
+        suffix: "revoked credential",
+        credentialStatus: "revoked",
+      },
+    );
+    const expiredMachine = await provisionMachineIntegration(
+      admin,
+      tenant,
+      {
+        suffix: "expired credential",
+        credentialStatus: "expired",
+      },
+    );
     provisioned.push({
       ...tenant,
-      machineIntegrationId: await provisionMachineIntegration(
-        admin,
-        tenant,
-      ),
+      machineIntegrationId: allowedMachine.integrationId,
+      machineApiKey: allowedMachine.apiKey,
       machineWithoutCapabilityId:
-        await provisionMachineIntegration(admin, tenant, {
-          suffix: "without capability",
-          capability: false,
-        }),
+        machineWithoutCapability.integrationId,
+      machineWithoutCapabilityApiKey:
+        machineWithoutCapability.apiKey,
       machineWithoutOrganizationGrantId:
-        await provisionMachineIntegration(admin, tenant, {
-          suffix: "without organization grant",
-          organizationGrant: false,
-        }),
+        machineWithoutOrganizationGrant.integrationId,
+      machineWithoutOrganizationGrantApiKey:
+        machineWithoutOrganizationGrant.apiKey,
       machineWithoutEngagementGrantId:
-        await provisionMachineIntegration(admin, tenant, {
-          suffix: "without engagement grant",
-          engagementGrant: false,
-        }),
+        machineWithoutEngagementGrant.integrationId,
+      machineWithoutEngagementGrantApiKey:
+        machineWithoutEngagementGrant.apiKey,
+      revokedMachineApiKey: revokedMachine.apiKey,
+      expiredMachineApiKey: expiredMachine.apiKey,
     });
   }
 

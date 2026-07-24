@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  loadAuthorizedEngagements,
   loadVisibleEngagements,
   type EngagementServiceDependencies,
   type VisibleEngagement,
 } from "./service";
+import type {
+  HumanPrincipal,
+  MachinePrincipal,
+} from "@/lib/agents/authorization";
 
 const engagements: VisibleEngagement[] = [
   {
@@ -81,5 +86,54 @@ describe("loadVisibleEngagements", () => {
     await expect(loadVisibleEngagements(dependencies)).resolves.toEqual({
       status: "query_failed",
     });
+  });
+});
+
+describe("loadAuthorizedEngagements", () => {
+  it("dispatches a human context to the existing human service", async () => {
+    const context: HumanPrincipal = {
+      kind: "human",
+      identity: { userId: "human-1" },
+    };
+    const loadHumanEngagements = vi.fn().mockResolvedValue({
+      status: "success",
+      engagements,
+    });
+    const loadMachineEngagements = vi.fn();
+
+    await expect(
+      loadAuthorizedEngagements(context, {
+        loadHumanEngagements,
+        loadMachineEngagements,
+      }),
+    ).resolves.toEqual({ status: "success", engagements });
+    expect(loadHumanEngagements).toHaveBeenCalledOnce();
+    expect(loadMachineEngagements).not.toHaveBeenCalled();
+  });
+
+  it("dispatches only a machine context to the RLS-backed machine service", async () => {
+    const context: MachinePrincipal = {
+      kind: "machine",
+      integrationId: "11111111-1111-4111-8111-111111111111",
+      capabilities: ["engagements:read"],
+      grants: {
+        organizationIds: ["organization-1"],
+        engagementIds: ["engagement-1"],
+      },
+    };
+    const loadHumanEngagements = vi.fn();
+    const loadMachineEngagements = vi.fn().mockResolvedValue({
+      status: "success",
+      engagements,
+    });
+
+    await expect(
+      loadAuthorizedEngagements(context, {
+        loadHumanEngagements,
+        loadMachineEngagements,
+      }),
+    ).resolves.toEqual({ status: "success", engagements });
+    expect(loadMachineEngagements).toHaveBeenCalledWith(context);
+    expect(loadHumanEngagements).not.toHaveBeenCalled();
   });
 });

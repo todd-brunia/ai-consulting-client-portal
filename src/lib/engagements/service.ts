@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import type { AuthorizationContext } from "@/lib/agents/authorization";
+import { loadMachineVisibleEngagements } from "@/lib/agents/machine-database";
 
 export type VisibleEngagement = {
   id: string;
@@ -25,6 +27,11 @@ type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
 export type EngagementServiceDependencies = {
   createSupabaseClient?: () => Promise<SupabaseClient>;
+};
+
+export type AuthorizedEngagementServiceDependencies = {
+  loadHumanEngagements?: () => Promise<LoadVisibleEngagementsResult>;
+  loadMachineEngagements?: typeof loadMachineVisibleEngagements;
 };
 
 export async function loadVisibleEngagements(
@@ -54,4 +61,20 @@ export async function loadVisibleEngagements(
     status: "success",
     engagements: data,
   };
+}
+
+export async function loadAuthorizedEngagements(
+  context: AuthorizationContext,
+  dependencies: AuthorizedEngagementServiceDependencies = {},
+): Promise<LoadVisibleEngagementsResult> {
+  if (context.kind === "human") {
+    return (
+      dependencies.loadHumanEngagements ?? loadVisibleEngagements
+    )();
+  }
+
+  return (
+    dependencies.loadMachineEngagements ??
+    loadMachineVisibleEngagements
+  )(context);
 }
