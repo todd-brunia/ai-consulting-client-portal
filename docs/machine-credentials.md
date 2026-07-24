@@ -99,6 +99,28 @@ current authorization metadata. Engagement data is never queried with that
 secret; it continues through the short-lived `portal_machine` token and RLS
 boundary.
 
+## Machine request audit events
+
+When a machine principal has been resolved, the engagements API writes one
+structured server log event for the final request outcome. The finite event
+contract contains only:
+
+- the event name `machine_request`;
+- the machine integration ID;
+- the request category `engagements.read`;
+- the result `success` or `rejected`; and
+- the server emission time as an ISO 8601 timestamp.
+
+Human requests and rejected requests without a resolved principal do not emit
+machine audit events. The helper constructs the event from an allowlist and
+does not accept request objects or errors, so bearer headers, complete API keys,
+credential verification material, service-role credentials, grants, and client
+content cannot be serialized into the event. Audit sink failures are ignored so
+they cannot alter or disclose details through the API response.
+
+These events use local server logging only. Hosted monitoring, retention,
+alerting, rate limiting, and public operational controls remain deferred.
+
 ### Local signing setup
 
 Starting the local stack generates an untracked ES256 signing key when one does
