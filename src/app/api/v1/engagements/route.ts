@@ -1,5 +1,9 @@
 import { resolveEngagementApiAuthentication } from "@/lib/agents/engagement-api-auth";
 import {
+  emitMachineRequestAudit,
+} from "@/lib/agents/machine-request-audit";
+import type { AuthorizationContext } from "@/lib/agents/authorization";
+import {
   loadAuthorizedEngagements,
   loadVisibleEngagements,
 } from "@/lib/engagements/service";
@@ -22,6 +26,8 @@ function errorResponse(
 }
 
 export async function GET(request: Request) {
+  let resolvedContext: AuthorizationContext | null = null;
+
   try {
     const humanClient = await createClient();
     const { data: claims } = await humanClient.auth.getClaims();
@@ -41,8 +47,14 @@ export async function GET(request: Request) {
       );
     }
     if (authentication.status === "forbidden") {
+      emitMachineRequestAudit({
+        context: authentication.context,
+        requestCategory: "engagements.read",
+        result: "rejected",
+      });
       return errorResponse(403, "forbidden", "Access denied");
     }
+    resolvedContext = authentication.context;
 
     const result = await loadAuthorizedEngagements(
       authentication.context,
@@ -55,6 +67,11 @@ export async function GET(request: Request) {
     );
 
     if (result.status === "unauthenticated") {
+      emitMachineRequestAudit({
+        context: resolvedContext,
+        requestCategory: "engagements.read",
+        result: "rejected",
+      });
       return errorResponse(
         401,
         "unauthorized",
@@ -62,6 +79,11 @@ export async function GET(request: Request) {
       );
     }
     if (result.status === "query_failed") {
+      emitMachineRequestAudit({
+        context: resolvedContext,
+        requestCategory: "engagements.read",
+        result: "rejected",
+      });
       return errorResponse(
         500,
         "query_failed",
@@ -69,10 +91,20 @@ export async function GET(request: Request) {
       );
     }
 
+    emitMachineRequestAudit({
+      context: resolvedContext,
+      requestCategory: "engagements.read",
+      result: "success",
+    });
     return Response.json(serializeEngagements(result.engagements), {
       headers: { "content-type": mediaType },
     });
   } catch {
+    emitMachineRequestAudit({
+      context: resolvedContext,
+      requestCategory: "engagements.read",
+      result: "rejected",
+    });
     return errorResponse(
       500,
       "query_failed",

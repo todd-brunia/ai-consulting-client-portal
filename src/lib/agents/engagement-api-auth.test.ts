@@ -170,7 +170,18 @@ describe("resolveEngagementApiAuthentication", () => {
         },
         dependencies,
       ),
-    ).resolves.toEqual({ status: "forbidden" });
+    ).resolves.toEqual({
+      status: "forbidden",
+      context: {
+        kind: "machine",
+        integrationId,
+        capabilities: [],
+        grants: {
+          organizationIds: ["organization-1"],
+          engagementIds: ["engagement-1"],
+        },
+      },
+    });
   });
 
   it.each([

@@ -22,7 +22,10 @@ export type EngagementApiAuthenticationResult =
       context: AuthorizationContext;
     }
   | { status: "unauthenticated" }
-  | { status: "forbidden" };
+  | {
+      status: "forbidden";
+      context: Extract<AuthorizationContext, { kind: "machine" }>;
+    };
 
 export type EngagementApiAuthenticationDependencies = {
   credentialRepository?: AgentCredentialVerificationRepository;
@@ -87,7 +90,10 @@ export async function resolveEngagementApiAuthentication(
   if (
     !resolution.context.capabilities.includes("engagements:read")
   ) {
-    return { status: "forbidden" };
+    return {
+      status: "forbidden",
+      context: resolution.context,
+    };
   }
 
   return resolution;
