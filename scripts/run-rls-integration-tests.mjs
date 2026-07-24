@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { provisionIntegrationFixtures } from "../tests/integration/supabase-fixtures.mjs";
 
 function readLocalSupabaseStatus() {
@@ -23,6 +24,24 @@ function readLocalSupabaseStatus() {
 }
 
 const status = readLocalSupabaseStatus();
+let machineSigningKeys;
+try {
+  machineSigningKeys = JSON.parse(
+    readFileSync("supabase/signing_keys.json", "utf8"),
+  );
+} catch {
+  throw new Error(
+    "Generate the untracked local machine signing key with `npx supabase gen signing-key` and restart Supabase.",
+  );
+}
+const machinePrivateJwk = machineSigningKeys.find?.(
+  (key) => key.alg === "ES256" && key.d,
+);
+if (!machinePrivateJwk) {
+  throw new Error(
+    "supabase/signing_keys.json does not contain a private ES256 key",
+  );
+}
 const fixtures = await provisionIntegrationFixtures({
   apiUrl: status.API_URL,
   serviceRoleKey: status.SERVICE_ROLE_KEY,
@@ -35,6 +54,13 @@ const fixtureIdentities = Object.fromEntries(
       userId: fixture.userId,
       organizationId: fixture.organizationId,
       engagementId: fixture.engagementId,
+      machineIntegrationId: fixture.machineIntegrationId,
+      machineWithoutCapabilityId:
+        fixture.machineWithoutCapabilityId,
+      machineWithoutOrganizationGrantId:
+        fixture.machineWithoutOrganizationGrantId,
+      machineWithoutEngagementGrantId:
+        fixture.machineWithoutEngagementGrantId,
     },
   ]),
 );
@@ -63,6 +89,8 @@ execFileSync(
       SUPABASE_TEST_URL: status.API_URL,
       SUPABASE_TEST_ANON_KEY: status.ANON_KEY,
       SUPABASE_TEST_FIXTURES: JSON.stringify(fixtureIdentities),
+      SUPABASE_TEST_MACHINE_PRIVATE_JWK:
+        JSON.stringify(machinePrivateJwk),
     },
     stdio: "inherit",
   },
