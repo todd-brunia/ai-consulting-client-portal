@@ -184,3 +184,7 @@ fixtures can create deterministic ephemeral keys. Production/default execution
 uses Node.js cryptographic randomness. Test credentials must remain fictional,
 local, and ephemeral; complete keys must not be committed, logged, or exposed
 to browser code.
+
+The maintained Bruno workflow provisions these same fixture credentials for
+interactive and CLI testing without printing them. See
+[`bruno-local-api.md`](bruno-local-api.md).

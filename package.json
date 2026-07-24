@@ -10,6 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "bruno:dev": "node scripts/run-bruno-dev.mjs",
+    "bruno:setup": "node scripts/setup-bruno-local.mjs",
+    "test:bruno": "node scripts/run-bruno-tests.mjs",
     "test:integration": "node scripts/run-integration-suite.mjs",
     "test:integration:api": "node scripts/run-api-integration-tests.mjs",
     "test:integration:rls": "node scripts/run-rls-integration-tests.mjs",
@@ -34,6 +37,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@usebruno/cli": "4.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
     "jsdom": "^29.1.1",
@@ -43,7 +47,10 @@
     "vitest": "^4.1.10"
   },
   "overrides": {
+    "axios": "1.18.1",
+    "form-data": "4.0.6",
     "postcss": "8.5.16",
-    "sharp": "0.35.3"
+    "sharp": "0.35.3",
+    "uuid": "11.1.1"
   }
 }

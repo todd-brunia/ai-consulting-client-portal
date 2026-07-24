@@ -1,0 +1,37 @@
+meta {
+  name: Authorized machine
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/v1/engagements
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/vnd.api+json
+  Authorization: Bearer {{process.env.PORTAL_API_KEY}}
+}
+
+tests {
+  test("returns only the explicitly granted engagement", function () {
+    const body = res.getBody();
+
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getHeader("content-type")).to.equal("application/vnd.api+json");
+    expect(body.jsonapi).to.eql({ version: "1.1" });
+    expect(body.data).to.have.lengthOf(1);
+    expect(body.data[0].type).to.equal("engagements");
+    expect(body.data[0].attributes.name).to.equal(
+      "Tenant A Integration Engagement"
+    );
+    expect(body.data[0].relationships.organization.data.type).to.equal(
+      "organizations"
+    );
+    expect(body.data.map((resource) => resource.attributes.name)).not.to.include(
+      "Tenant B Integration Engagement"
+    );
+  });
+}
