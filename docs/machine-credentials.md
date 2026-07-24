@@ -82,14 +82,15 @@ that preserves immediate rejection of revoked or expired external credentials.
 
 ### Local signing setup
 
-Generate an untracked local ES256 signing key:
+Starting the local stack generates an untracked ES256 signing key when one does
+not already exist:
 
 ```bash
-npx supabase gen signing-key
+npm run supabase:start
 ```
 
-The CLI writes `supabase/signing_keys.json`, which is ignored by Git and loaded
-through `supabase/config.toml`. Restart the local stack after generating or
+The setup utility writes `supabase/signing_keys.json`, which is ignored by Git
+and loaded through `supabase/config.toml`. Restart the local stack after
 changing the key. Copy the private JWK JSON into the server-only
 `MACHINE_JWT_PRIVATE_JWK` value in `.env.local`; never use a `NEXT_PUBLIC_`
 prefix.

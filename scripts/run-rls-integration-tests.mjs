@@ -31,7 +31,7 @@ try {
   );
 } catch {
   throw new Error(
-    "Generate the untracked local machine signing key with `npx supabase gen signing-key` and restart Supabase.",
+    "Start Supabase with `npm run supabase:start` to generate and load the untracked local machine signing key.",
   );
 }
 const machinePrivateJwk = machineSigningKeys.find?.(
