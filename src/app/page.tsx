@@ -1,16 +1,11 @@
 import { redirect } from "next/navigation";
 import { signOut } from "./login/actions";
-import { createClient } from "@/lib/supabase/server";
+import { loadVisibleEngagements } from "@/lib/engagements/service";
 
 export default async function Home() {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getClaims();
-  if (!data?.claims.sub) redirect("/login");
-
-  const { data: engagements } = await supabase
-    .from("engagements")
-    .select("id, name, status, organizations(name)")
-    .order("created_at", { ascending: false });
+  const result = await loadVisibleEngagements();
+  if (result.status === "unauthenticated") redirect("/login");
+  const engagements = result.status === "success" ? result.engagements : [];
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-6 py-12">
@@ -22,7 +17,7 @@ export default async function Home() {
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-xl font-semibold">Engagements</h2>
           <div className="mt-5 space-y-3">
-            {engagements?.map((engagement) => (
+            {engagements.map((engagement) => (
               <article key={engagement.id} className="rounded-xl bg-slate-50 p-4">
                 <p className="font-semibold">{engagement.name}</p>
                 <p className="mt-1 text-sm text-slate-600">{engagement.organizations?.[0]?.name} · {engagement.status}</p>
