@@ -24,6 +24,13 @@ set application_user_id = application_user.id
 from public.application_users application_user
 where application_user.auth_user_id = membership.user_id;
 
+-- The original tenant policies reference organization_memberships.user_id.
+-- Remove them before replacing that column, then recreate them below against
+-- the stable application identity and active-membership helpers.
+drop policy "members read their organizations" on public.organizations;
+drop policy "members read their memberships" on public.organization_memberships;
+drop policy "members read their engagements" on public.engagements;
+
 alter table public.organization_memberships
   drop constraint organization_memberships_pkey,
   drop constraint organization_memberships_user_id_fkey,
@@ -154,10 +161,6 @@ revoke all on function private.is_staff_admin() from public;
 grant execute on function private.current_application_user_id() to authenticated;
 grant execute on function private.has_active_organization_membership(uuid) to authenticated;
 grant execute on function private.is_staff_admin() to authenticated;
-
-drop policy "members read their organizations" on public.organizations;
-drop policy "members read their memberships" on public.organization_memberships;
-drop policy "members read their engagements" on public.engagements;
 
 create policy "active members or staff read organizations"
 on public.organizations for select to authenticated
