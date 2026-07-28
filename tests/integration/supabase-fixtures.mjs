@@ -253,6 +253,7 @@ async function provisionLifecycleFixtures(admin, tenant) {
         invited_by_application_user_id: provisioned.staff.applicationUserId,
         invited_email: lifecycleFixtures.pendingClient.email,
         token_hash: tokenHash,
+        created_at: "2026-01-01T00:00:00.000Z",
         expires_at: "2099-01-01T00:00:00.000Z",
         ...values,
       })
