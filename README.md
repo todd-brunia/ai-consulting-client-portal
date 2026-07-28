@@ -9,6 +9,7 @@ not a production portal or transaction system.
 - Next.js App Router, TypeScript, Tailwind CSS
 - Local Supabase PostgreSQL, Auth, Storage, Studio, and test email inbox
 - Tenant-aware organizations, memberships, and engagements with RLS
+- Invitation-only onboarding persistence with independent staff authority
 - A server-rendered authenticated workspace
 - A versioned JSON:API engagements endpoint
 - Read-only portal API-key authentication for machine engagement access
@@ -27,8 +28,10 @@ container engine.
    the server-only `MACHINE_JWT_PRIVATE_JWK` value.
 4. Reset the local database: `npm run supabase:reset`
 5. Start Next.js: `npm run dev`
-6. Open `http://localhost:3000`, create a local account, and inspect the sample
-   workspace. Local emails appear at `http://127.0.0.1:54324`.
+6. Open `http://localhost:3000`, create a local account, and inspect the
+   application identity flow. Deterministic fixtures provide the sample
+   workspace; invitation issuance and acceptance remain deferred. Local emails
+   appear at `http://127.0.0.1:54324`.
 
 No Vercel or hosted Supabase account is required. Stop local services with
 `npm run supabase:stop`.
@@ -36,6 +39,10 @@ No Vercel or hosted Supabase account is required. Stop local services with
 For supported interactive and CLI testing of the machine API, use the
 repository-owned Bruno collection described in
 [`docs/bruno-local-api.md`](docs/bruno-local-api.md).
+
+The local invitation persistence contract, including its deferred production
+controls, is documented in
+[`docs/invitation-foundation.md`](docs/invitation-foundation.md).
 
 ## Run application and database integration checks
 

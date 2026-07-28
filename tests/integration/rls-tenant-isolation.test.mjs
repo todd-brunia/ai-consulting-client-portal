@@ -141,19 +141,20 @@ describe.each(tenantFixtures)("$key PostgreSQL tenant isolation", (fixture) => {
   test("reads only its membership", async () => {
     const { data: ownRows, error: ownError } = await client
       .from("organization_memberships")
-      .select("organization_id, user_id, role")
+      .select("organization_id, application_user_id, role, status")
       .eq("organization_id", identity.organizationId);
     const { data: otherRows, error: otherError } = await client
       .from("organization_memberships")
-      .select("organization_id, user_id, role")
+      .select("organization_id, application_user_id, role, status")
       .eq("organization_id", otherIdentity.organizationId);
 
     expect(ownError).toBeNull();
     expect(ownRows).toEqual([
       {
         organization_id: identity.organizationId,
-        user_id: identity.userId,
-        role: "owner",
+        application_user_id: identity.applicationUserId,
+        role: "client_member",
+        status: "active",
       },
     ]);
     expect(otherError).toBeNull();
@@ -192,6 +193,82 @@ describe.each(tenantFixtures)("$key PostgreSQL tenant isolation", (fixture) => {
       expect(error?.message).toMatch(/permission denied/i);
     },
   );
+});
+
+describe("invitation membership lifecycle RLS", () => {
+  const lifecycle = fixtureIdentities.lifecycle;
+
+  async function signIn(email, password) {
+    const client = createAuthenticatedClient();
+    const { error } = await client.auth.signInWithPassword({
+      email,
+      password,
+    });
+    expect(error).toBeNull();
+    return client;
+  }
+
+  test.each(["pendingClient", "revokedClient"])(
+    "%s cannot read its inactive organization or membership",
+    async (key) => {
+      const fixture = lifecycle[key];
+      const client = await signIn(fixture.email, fixture.password);
+      const { data: organizations, error: organizationError } = await client
+        .from("organizations")
+        .select("id")
+        .eq("id", fixture.organizationId);
+      const { data: memberships, error: membershipError } = await client
+        .from("organization_memberships")
+        .select("organization_id")
+        .eq("organization_id", fixture.organizationId);
+
+      expect(organizationError).toBeNull();
+      expect(organizations).toEqual([]);
+      expect(membershipError).toBeNull();
+      expect(memberships).toEqual([]);
+      await client.auth.signOut();
+    },
+  );
+
+  test("staff authority can read invitation lifecycle records without client membership", async () => {
+    const client = await signIn(
+      lifecycle.staff.email,
+      lifecycle.staff.password,
+    );
+    const { data, error } = await client
+      .from("organization_invitations")
+      .select("id, token_hash, consumed_at, revoked_at, replaced_at, replacement_invitation_id")
+      .in("id", Object.values(lifecycle.invitationIds));
+
+    expect(error).toBeNull();
+    expect(data).toHaveLength(6);
+    expect(data.every((invitation) => /^[a-f0-9]{64}$/.test(invitation.token_hash)))
+      .toBe(true);
+    expect(data.find((invitation) => invitation.id === lifecycle.invitationIds.consumed)
+      ?.consumed_at).not.toBeNull();
+    expect(data.find((invitation) => invitation.id === lifecycle.invitationIds.revoked)
+      ?.revoked_at).not.toBeNull();
+    const replaced = data.find(
+      (invitation) => invitation.id === lifecycle.invitationIds.replaced,
+    );
+    expect(replaced?.replaced_at).not.toBeNull();
+    expect(replaced?.replacement_invitation_id).toBe(
+      lifecycle.invitationIds.replacement,
+    );
+    await client.auth.signOut();
+  });
+
+  test("an active client membership does not grant staff invitation access", async () => {
+    const client = await signIn(tenantFixtures[0].email, tenantFixtures[0].password);
+    const { data, error } = await client
+      .from("organization_invitations")
+      .select("id")
+      .eq("id", lifecycle.invitationIds.current);
+
+    expect(error).toBeNull();
+    expect(data).toEqual([]);
+    await client.auth.signOut();
+  });
 });
 
 describe.each(tenantFixtures)(
