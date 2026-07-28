@@ -48,11 +48,12 @@ together.
 
 ## Initial Experience
 
-In the current local experience, a person can create an account, receive an
-organization membership and sample engagement, sign in, and view the
-organization-scoped workspace. The workspace illustrates the path from
-authentication through tenant membership and row-level security to a reusable
-JSON:API engagement resource.
+In the current local experience, a person can create an account and receive a
+stable application identity. Deterministic local fixtures provide active client
+memberships and sample engagements for inspecting the organization-scoped
+workspace. The workspace illustrates the path from authentication through
+tenant membership and row-level security to a reusable JSON:API engagement
+resource. Invitation issuance and acceptance are deliberately deferred.
 
 This is a learning demonstration, not a production client onboarding or
 service-delivery workflow.

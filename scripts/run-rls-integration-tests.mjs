@@ -52,6 +52,7 @@ const fixtureIdentities = Object.fromEntries(
     key,
     {
       userId: fixture.userId,
+      applicationUserId: fixture.applicationUserId,
       organizationId: fixture.organizationId,
       engagementId: fixture.engagementId,
       machineIntegrationId: fixture.machineIntegrationId,
@@ -64,6 +65,7 @@ const fixtureIdentities = Object.fromEntries(
     },
   ]),
 );
+fixtureIdentities.lifecycle = fixtures.lifecycle;
 
 const testEnvironment = { ...process.env };
 for (const secretName of [
