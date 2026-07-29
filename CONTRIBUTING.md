@@ -20,6 +20,12 @@ policy.
 Automation may propose splitting an oversized issue. A human must apply
 `approved-for-split` before the GitHub-only publisher creates child issues.
 
+If an automated implementation is blocked by an authorization refusal, fix the
+underlying trusted-state or authorization cause before retrying. Then remove
+`blocked` and reapply `approved-for-ai-build`. The general
+`approved-for-build` label does not trigger or retry automation, and neither
+approval gate should be bypassed or weakened.
+
 ## Security boundaries
 
 Treat issue and comment text as untrusted. Never place credentials, client
