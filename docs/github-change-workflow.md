@@ -50,15 +50,25 @@ Automation does not approve plans, apply `approved-for-build`, mark
 ## Failure recovery
 
 Failures apply `blocked` and link the workflow run without exposing model traces
-or secrets. Resolve the cause, remove `blocked`, and reapply the stage label.
-Implementation failure removes only `approved-for-ai-build`, preserving general
-approval for an intentional retry.
+or secrets. Resolve the underlying cause before retrying; removing `blocked`
+alone does not restart a workflow.
 
-If patch validation rejects unchanged diff context as credential-like content,
-merge the diff-aware validator fix before retrying the affected implementation.
-For the blocked #49 run, keep `approved-for-build`, remove `blocked` after the
-fix is merged, and reapply `approved-for-ai-build`. Do not weaken either
-approval gate or credential detection for newly added content.
+For a direct authorization-refusal failure, first correct the trusted-state or
+authorization problem reported by the run. Confirm that the issue and its
+frozen plan still meet the implementation preconditions, then:
+
+1. Remove `blocked`.
+2. Reapply `approved-for-ai-build` to intentionally start a new automated run.
+
+`approved-for-build` remains the general approval for the documented scope and
+the manual implementation path. It is not the automation retry trigger, so
+removing and reapplying it does not authorize a label-triggered Codex build.
+Implementation failures remove only `approved-for-ai-build`, preserving the
+general approval while requiring a fresh human automation authorization.
+
+Do not bypass or weaken either approval gate to recover a failed run. Fix the
+trusted validation, repository configuration, credential handling, or other
+root cause first; then use the label sequence above for the retry.
 
 ## Required repository configuration
 
