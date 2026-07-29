@@ -96,9 +96,17 @@ considered. Unknown or unavailable base revisions conservatively require the
 integration suite. Relevant patterns are maintained in
 `.github/ci-supabase-paths.txt` and covered by unit tests.
 
-`CI Gate` is the stable aggregate result for future branch protection. It
-requires fast validation and path detection to succeed, and accepts Supabase
-integration only when it either succeeds or is intentionally skipped.
+Every workflow invocation also runs the production-built `Chromium Playwright`
+suite against its own disposable Supabase stack. Failure-only diagnostics are
+retained for seven days only after the repository's artifact safety check
+rejects server credentials and credential-bearing files.
+
+`CI Gate` is the exact stable status-check name for branch protection. Before
+merge, require that aggregate check on pull requests; it requires fast
+validation, path detection, Chromium Playwright, and any required Supabase
+integration to satisfy their contracts. The separate `CI Gate` result produced
+by the push to `main` verifies the post-merge default-branch state and is not a
+substitute for the pre-merge required check.
 
 ## Architecture boundaries
 
