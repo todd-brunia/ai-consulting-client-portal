@@ -48,6 +48,23 @@ invitation acceptance and organization access, but it does not prove phone
 verification, terms acceptance, SMS consent, hosted delivery, or production
 onboarding readiness.
 
+## Browser regression coverage
+
+The serial Chromium suite exercises the supported local client journey with the
+deterministic lifecycle fixtures. It covers a missing or malformed link,
+authentication failure, expired, revoked, replaced, consumed, unknown, and
+wrong-account invitations, successful activation of exactly the intended
+pending membership, and an idempotent retry by the consuming account. Every
+inactive or mismatched case asserts the same non-disclosing unavailable state
+and verifies that protected persistence remains unchanged.
+
+Invitation tests disable Playwright tracing and never include invitation values
+in test names or output. Browser actions use ordinary authenticated sessions;
+the service-role client is confined to server-side precondition and
+postcondition inspection. Run this coverage through the production-build
+workflow documented in
+[`playwright-local.md`](playwright-local.md).
+
 ## Deferred controls
 
 Staff invitation issuance, production token delivery, hosted Supabase
