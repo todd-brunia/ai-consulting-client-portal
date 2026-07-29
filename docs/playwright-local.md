@@ -47,3 +47,19 @@ Parallelization requires per-worker fixture namespaces, independent users and
 organizations, collision-free cleanup, and proof that no worker resets shared
 fixtures while another is running. Increase `workers` only after those
 isolation guarantees exist.
+
+## Supported browser journeys
+
+The serial Chromium suite covers the existing unauthenticated workspace
+redirect, successful and unsuccessful login, safe invitation and staff-route
+destination preservation, rejection of external or protocol-relative return
+destinations, authenticated workspace rendering, tenant-scoped engagement
+visibility, generic forbidden staff access, and sign-out.
+
+These journeys use the deterministic tenant users from
+`tests/integration/supabase-fixtures.mjs` and assert through accessible labels,
+roles, headings, visible text, and URLs. Cross-tenant protection is represented
+by the absence of the other tenant's organization and engagement; the tests do
+not attempt to expose or distinguish protected resource identifiers. Invitation
+acceptance and staff invitation-management operations remain outside this
+journey group.
