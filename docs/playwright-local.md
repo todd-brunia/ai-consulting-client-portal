@@ -61,24 +61,37 @@ the last report with:
 npx playwright show-report
 ```
 
-Treat every artifact as local-sensitive test output. Do not commit or upload
-reports, screenshots, traces, videos, fixture credentials, invitation values,
-or browser storage. Suites that handle invitation values disable tracing and
-video, so debug them with visible UI state and the server-side database
-assertions rather than recording secrets.
+Treat every local artifact as sensitive test output. Do not commit or manually
+upload reports, screenshots, traces, videos, fixture credentials, invitation
+values, or browser storage. Suites that handle invitation values disable
+tracing and video, so debug them with visible UI state and the server-side
+database assertions rather than recording secrets.
 
 ## Continuous integration behavior
 
-The current GitHub Actions workflow runs linting, type checking, unit tests,
-the production build, and conditionally the Supabase integration suite. It does
-not yet run `npm run test:e2e`; Playwright CI execution and artifact retention
-remain separately scoped work. Until that lands, contributors must run the
-applicable browser coverage locally and record the result in the pull request.
+Every pull request and push to `main` runs the `Chromium Playwright` job against
+an isolated local Supabase stack. The job installs Chromium, resets the
+database, invokes the same production-build `npm run test:e2e` path, and removes
+the stack in an unconditional cleanup step. Video is disabled because failure
+screenshots, the HTML report, and traces provide the required diagnostics with
+less sensitive output and lower storage cost.
 
-Both local browser testing and any future CI execution are limited to
-disposable resources provisioned for that run. This workflow does not authorize
-testing against hosted Supabase projects, preview deployments, production
-systems, or production data.
+Failure diagnostics are retained for seven days only after an automated scan
+rejects environment files, signing keys, private-key material, service-role
+markers, and Supabase secret-key markers. A failed scan blocks the Playwright
+job and prevents artifact upload. Invitation suites disable tracing and video;
+their reports and screenshots must not contain invitation values.
+
+The exact branch-protection status check remains `CI Gate`. Before merge, that
+stable aggregate check requires `Chromium Playwright` to succeed along with
+fast validation, path detection, and any required Supabase integration work.
+The subsequent `CI Gate` run on the merged push to `main` verifies the resulting
+default-branch state; it does not replace the pre-merge required check.
+
+Both local browser testing and CI execution are limited to disposable resources
+provisioned for that run. This workflow does not authorize testing against
+hosted Supabase projects, preview deployments, production systems, or
+production data.
 
 ## Database verification and cleanup
 

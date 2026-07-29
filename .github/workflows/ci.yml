@@ -110,6 +110,48 @@ jobs:
         if: always()
         run: npm run supabase:stop -- --no-backup > /dev/null
 
+  playwright:
+    name: Chromium Playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.18.0
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Chromium and system dependencies
+        run: npx playwright install --with-deps chromium
+      - name: Start isolated Supabase stack
+        run: npm run supabase:start > /dev/null
+      - name: Reset database from tracked migrations
+        run: npm run supabase:reset
+      - name: Run production-built Chromium regression suite
+        id: browser_tests
+        run: npm run test:e2e
+      - name: Verify failure artifacts contain no server credentials
+        id: artifact_safety
+        if: failure() && steps.browser_tests.outcome == 'failure'
+        run: node .github/scripts/playwright-artifact-safety.mjs playwright-report test-results
+      - name: Upload secret-safe Playwright failure diagnostics
+        if: failure() && steps.browser_tests.outcome == 'failure' && steps.artifact_safety.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          include-hidden-files: false
+          retention-days: 7
+      - name: Stop and remove Supabase stack
+        if: always()
+        run: npm run supabase:stop -- --no-backup > /dev/null
+
   ci-gate:
     name: CI Gate
     if: always()
@@ -117,6 +159,7 @@ jobs:
       - fast-validation
       - detect-supabase-changes
       - supabase-integration
+      - playwright
     runs-on: ubuntu-latest
     steps:
       - name: Verify required checks
@@ -125,6 +168,7 @@ jobs:
           DETECTOR_RESULT: ${{ needs.detect-supabase-changes.result }}
           INTEGRATION_REQUIRED: ${{ needs.detect-supabase-changes.outputs.required }}
           INTEGRATION_RESULT: ${{ needs.supabase-integration.result }}
+          PLAYWRIGHT_RESULT: ${{ needs.playwright.result }}
         shell: bash
         run: |
           set -euo pipefail
@@ -136,6 +180,10 @@ jobs:
             echo "Path detector result: $DETECTOR_RESULT" >&2
             exit 1
           fi
+          if [[ "$PLAYWRIGHT_RESULT" != success ]]; then
+            echo "Chromium Playwright result: $PLAYWRIGHT_RESULT" >&2
+            exit 1
+          fi
           case "$INTEGRATION_REQUIRED:$INTEGRATION_RESULT" in
             true:success|false:skipped) ;;
             *)
@@ -143,4 +191,4 @@ jobs:
               exit 1
               ;;
           esac
-          echo "CI gate passed with Supabase integration: $INTEGRATION_RESULT"
+          echo "CI gate passed with Supabase integration: $INTEGRATION_RESULT and Chromium Playwright: $PLAYWRIGHT_RESULT"
