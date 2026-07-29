@@ -21,15 +21,32 @@ a thin collaboration layer around managed services.
 2. Confirm that every tracked-file change has an originating issue; there is
    no small-change bypass for dependencies, documentation, CI, or policy.
 3. Confirm that the issue has a marked plan and `approved-for-build`.
-4. AI implementation also requires `approved-for-ai-build`.
+4. Label-triggered AI implementation also requires `approved-for-ai-build`;
+   explicitly invoked local interactive implementation uses the manual path.
 5. Do not implement while `needs-decision`, `split-proposed`,
    `approved-for-split`, or `split-parent` is present.
 
 Manual implementation uses a non-reserved branch and linked draft pull
-request. Reserve `codex/issue-<number>` branches for label automation. For
-local interactive implementation, use the repository-local
-`implement-approved-issue` skill; implementation permission does not imply
-permission to push, open a pull request, comment, or change labels.
+request. Local interactive Codex implementation follows this manual path and
+requires `approved-for-build`; reserve `approved-for-ai-build` and
+`codex/issue-<number>` branches for label-triggered automation. For local
+interactive implementation, use the repository-local `implement-approved-issue`
+skill; implementation permission does not imply permission to push, open a pull
+request, comment, or change labels.
+
+## Issue Creation
+
+Issue creation is an external write and requires explicit user authorization.
+Before creating an issue, inspect the matching form under
+`.github/ISSUE_TEMPLATE` and preserve its required fields, structure, default
+labels, and workflow-state labels. CLI and API creation bypass issue-form
+defaults, so apply those defaults explicitly and keep state labels separate from
+optional topical labels.
+
+New independently actionable changes normally begin with `needs-planning`.
+Do not apply it when the requested issue is intentionally parked or blocked, or
+when an unapproved split child is meant to remain outside the planning workflow;
+document the exception in the issue instead.
 
 ## Engineering Principles
 
