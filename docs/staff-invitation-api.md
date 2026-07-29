@@ -60,6 +60,17 @@ inspect lifecycle details, and explicitly replace or revoke an invitation.
 Status and error feedback is announced to assistive technology and receives
 focus after each operation.
 
+The serial Chromium regression suite covers staff-route authentication,
+ordinary-client denial, labeled keyboard-operable controls at a narrow
+viewport, organization scoping, invalid and duplicate issuance, issue, inspect,
+refresh, replace, revoke, stale conflict, and idempotent revoke behavior.
+Server-side assertions verify lifecycle lineage and the absence of unintended
+mutations. The suite disables tracing and video, never names invitation values,
+and verifies that persisted hashes and privileged credential markers are absent
+from the rendered interface. The disposable local Auth stack uses a raised
+email allowance so repeated issue-and-replacement test runs do not exhaust the
+provider default; this does not configure or relax hosted rate limits.
+
 In another terminal, run `npm run bruno:setup` for the desktop collection or
 `npm run test:bruno` for the pinned CLI contract. The ignored Bruno environment
 contains a short-lived local staff session and organization ID. Do not copy
