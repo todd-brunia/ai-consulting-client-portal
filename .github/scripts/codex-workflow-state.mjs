@@ -406,10 +406,85 @@ export function evaluateTrigger({
   return { action: "run", ...context };
 }
 
+const PATCH_METADATA_PATTERN =
+  /^(?:index [0-9a-f]+\.\.[0-9a-f]+(?: \d+)?|(?:old|new|deleted file) mode \d+|similarity index \d+%|dissimilarity index \d+%|rename (?:from|to) .+|copy (?:from|to) .+|--- (?:a\/.+|\/dev\/null)|\+\+\+ (?:b\/.+|\/dev\/null))$/;
+
+function addedPatchContent(patch) {
+  const added = [];
+  let sawFile = false;
+  let inHunk = false;
+  let oldRemaining = 0;
+  let newRemaining = 0;
+
+  const finishHunk = () => {
+    if (inHunk && (oldRemaining !== 0 || newRemaining !== 0)) {
+      throw new Error("Patch contains a malformed diff hunk.");
+    }
+    inHunk = false;
+  };
+
+  const lines = patch.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.startsWith("diff --git ")) {
+      finishHunk();
+      sawFile = true;
+      continue;
+    }
+    if (!sawFile) {
+      if (line === "" && index === lines.length - 1) continue;
+      throw new Error("Patch contains malformed diff content.");
+    }
+    if (line === "GIT binary patch" || /^Binary files .+ differ$/.test(line)) {
+      throw new Error("Patch contains unsupported binary changes.");
+    }
+
+    const hunk = line.match(/^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@(?: .*)?$/);
+    if (hunk) {
+      finishHunk();
+      inHunk = true;
+      oldRemaining = hunk[1] === undefined ? 1 : Number(hunk[1]);
+      newRemaining = hunk[2] === undefined ? 1 : Number(hunk[2]);
+      continue;
+    }
+
+    if (inHunk) {
+      if (line === "\\ No newline at end of file") continue;
+      const prefix = line[0];
+      if (prefix === " ") {
+        oldRemaining -= 1;
+        newRemaining -= 1;
+      } else if (prefix === "-") {
+        oldRemaining -= 1;
+      } else if (prefix === "+") {
+        newRemaining -= 1;
+        added.push(line.slice(1));
+      } else {
+        throw new Error("Patch contains malformed diff content.");
+      }
+      if (oldRemaining < 0 || newRemaining < 0) {
+        throw new Error("Patch contains a malformed diff hunk.");
+      }
+      if (oldRemaining === 0 && newRemaining === 0) inHunk = false;
+      continue;
+    }
+
+    if (line === "" && index === lines.length - 1) continue;
+    if (line === "\\ No newline at end of file") continue;
+    if (!PATCH_METADATA_PATTERN.test(line)) {
+      throw new Error("Patch contains malformed diff content.");
+    }
+  }
+
+  finishHunk();
+  return added.join("\n");
+}
+
 export function validatePatch(patch, { maxBytes = 500_000 } = {}) {
   if (!patch.trim()) throw new Error("Codex produced an empty patch.");
   if (Buffer.byteLength(patch) > maxBytes) throw new Error("Patch exceeds the size limit.");
-  if (/AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{20,}|BEGIN (?:RSA |EC )?PRIVATE KEY/.test(patch)) {
+  const addedContent = addedPatchContent(patch);
+  if (/AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{20,}|BEGIN (?:RSA |EC )?PRIVATE KEY/.test(addedContent)) {
     throw new Error("Patch contains a credential-like value.");
   }
 

@@ -544,13 +544,97 @@ describe("workflow state", () => {
   });
 
   it("validates patch paths, size, and credential-like content", () => {
-    const valid = "diff --git a/docs/a.md b/docs/a.md\n--- a/docs/a.md\n+++ b/docs/a.md\n";
+    const valid = [
+      "diff --git a/docs/a.md b/docs/a.md",
+      "index 1111111..2222222 100644",
+      "--- a/docs/a.md",
+      "+++ b/docs/a.md",
+      "@@ -1 +1 @@",
+      "-Before",
+      "+After",
+      "",
+    ].join("\n");
     expect(validatePatch(valid)).toEqual(["docs/a.md"]);
     expect(() => validatePatch("diff --git a/../x b/../x\n")).toThrow(/Unsafe/);
-    expect(() => validatePatch(`${valid}+sk-abcdefghijklmnopqrstuvwxyz123456\n`)).toThrow(
-      /credential/,
-    );
     expect(() => validatePatch(valid, { maxBytes: 2 })).toThrow(/size/);
+  });
+
+  it("scans only content added inside unified diff hunks", () => {
+    const fakeOpenAiKey = ["sk", "abcdefghijklmnopqrstuvwxyz123456"].join("-");
+    const contextOnly = [
+      "diff --git a/tests/example.mjs b/tests/example.mjs",
+      "index 1111111..2222222 100644",
+      "--- a/tests/example.mjs",
+      "+++ b/tests/example.mjs",
+      "@@ -1,2 +1,2 @@",
+      ` ${fakeOpenAiKey}`,
+      "-Before",
+      "+After",
+      "",
+    ].join("\n");
+    const removedOnly = [
+      "diff --git a/tests/example.mjs b/tests/example.mjs",
+      "index 1111111..2222222 100644",
+      "--- a/tests/example.mjs",
+      "+++ b/tests/example.mjs",
+      "@@ -1 +1 @@",
+      `-${fakeOpenAiKey}`,
+      "+Removed the fixture",
+      "",
+    ].join("\n");
+    const metadataOnly = [
+      `diff --git a/docs/${fakeOpenAiKey}.md b/docs/${fakeOpenAiKey}.md`,
+      "index 1111111..2222222 100644",
+      `--- a/docs/${fakeOpenAiKey}.md`,
+      `+++ b/docs/${fakeOpenAiKey}.md`,
+      "@@ -1 +1 @@",
+      "-Before",
+      "+After",
+      "",
+    ].join("\n");
+
+    expect(validatePatch(contextOnly)).toEqual(["tests/example.mjs"]);
+    expect(validatePatch(removedOnly)).toEqual(["tests/example.mjs"]);
+    expect(validatePatch(metadataOnly)).toEqual([`docs/${fakeOpenAiKey}.md`]);
+  });
+
+  it.each([
+    ["AWS access key", ["AKIA", "ABCDEFGHIJKLMNOP"].join("")],
+    ["OpenAI-style key", ["sk", "abcdefghijklmnopqrstuvwxyz123456"].join("-")],
+    ["private key header", ["BEGIN", "PRIVATE KEY"].join(" ")],
+  ])("rejects an added %s without echoing it", (_name, credential) => {
+    const patch = [
+      "diff --git a/docs/a.md b/docs/a.md",
+      "index 1111111..2222222 100644",
+      "--- a/docs/a.md",
+      "+++ b/docs/a.md",
+      "@@ -1 +1 @@",
+      "-Before",
+      `+${credential}`,
+      "",
+    ].join("\n");
+
+    expect(() => validatePatch(patch)).toThrow("Patch contains a credential-like value.");
+    try {
+      validatePatch(patch);
+    } catch (error) {
+      expect(error.message).not.toContain(credential);
+    }
+  });
+
+  it.each([
+    [
+      "a malformed hunk",
+      "diff --git a/docs/a.md b/docs/a.md\n--- a/docs/a.md\n+++ b/docs/a.md\n@@ -1 +1 @@\n+After\n",
+      /malformed/,
+    ],
+    [
+      "a binary patch",
+      "diff --git a/public/a.png b/public/a.png\nGIT binary patch\nliteral 1\nA\n",
+      /binary/,
+    ],
+  ])("fails closed for %s", (_name, patch, message) => {
+    expect(() => validatePatch(patch)).toThrow(message);
   });
 
   it("rejects unsafe public output", () => {

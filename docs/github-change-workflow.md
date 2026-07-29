@@ -54,6 +54,12 @@ or secrets. Resolve the cause, remove `blocked`, and reapply the stage label.
 Implementation failure removes only `approved-for-ai-build`, preserving general
 approval for an intentional retry.
 
+If patch validation rejects unchanged diff context as credential-like content,
+merge the diff-aware validator fix before retrying the affected implementation.
+For the blocked #49 run, keep `approved-for-build`, remove `blocked` after the
+fix is merged, and reapply `approved-for-ai-build`. Do not weaken either
+approval gate or credential detection for newly added content.
+
 ## Required repository configuration
 
 - Variables: `CODEX_AUTOMATION_ENABLED`, `CODEX_ALLOWED_ACTORS`, and
