@@ -10,6 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "node scripts/run-playwright-local.mjs",
+    "test:e2e:headed": "node scripts/run-playwright-local.mjs --headed",
+    "test:e2e:ui": "node scripts/run-playwright-local.mjs --ui",
     "bruno:dev": "node scripts/run-bruno-dev.mjs",
     "bruno:setup": "node scripts/setup-bruno-local.mjs",
     "test:bruno": "node scripts/run-bruno-tests.mjs",
@@ -31,6 +34,7 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
