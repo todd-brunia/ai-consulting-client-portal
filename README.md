@@ -67,7 +67,8 @@ or use `npm run supabase:stop -- --no-backup` to remove its local data.
 Production-built local browser checks use the same disposable Supabase
 foundation. See [`docs/playwright-local.md`](docs/playwright-local.md) for the
 required Playwright command, authoring modes, safety boundary, cleanup
-guarantees, and serial-execution policy.
+guarantees, debugging and artifact guidance, CI behavior, and serial-execution
+policy.
 
 Each check is named in the output so schema, fixture, RLS, and endpoint failures
 remain distinguishable. Supabase status output is captured where credentials

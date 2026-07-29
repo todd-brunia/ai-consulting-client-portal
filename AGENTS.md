@@ -60,6 +60,10 @@ document the exception in the issue instead.
   documentation synchronized whenever application API routes, authentication,
   authorization, headers, media types, request or response schemas, error
   behavior, fixtures, or local API-testing prerequisites change.
+- Add or update applicable Playwright coverage whenever a change affects
+  user-visible behavior, navigation, forms, authentication, authorization,
+  error handling, or UI-initiated persistence. When Playwright coverage is
+  genuinely not applicable, explain why in the pull request.
 
 ## Required Validation
 
