@@ -40,7 +40,7 @@ npm run bruno:setup
 The command writes the credentials to the ignored `bruno/.env` file with
 owner-only permissions and does not print them. Open the `bruno` directory as a
 collection in Bruno, select the `Local` environment, and run the requests in
-the `engagements` folder.
+the `engagements` or `invitations` folder.
 
 The collection covers:
 
@@ -50,6 +50,13 @@ The collection covers:
 - a capable machine without a required grant receiving an empty collection;
   and
 - an authorized tenant A machine receiving only its granted engagement.
+
+The invitation folder uses a short-lived local staff session to cover generic
+unauthenticated failure, safe issuance, duplicate conflict, inspection,
+explicit replacement, and revocation. No request or assertion prints the staff
+cookie, raw invitation token, token hash, or provider link. See
+[Staff invitation lifecycle API](staff-invitation-api.md) for the route and
+error contract.
 
 Run `npm run bruno:setup` again after resetting fixtures, expiring or revoking a
 credential, or changing machine authentication data. Delete `bruno/.env` when
@@ -70,7 +77,7 @@ npm run test:bruno
 
 This command reprovisions the local fixtures, keeps the API keys in memory,
 removes service-role and machine-signing credentials from the Bruno child
-process, and runs the pinned Bruno CLI collection. It does not create
+process, and runs both pinned Bruno CLI contract folders. It does not create
 `bruno/.env` or print authorization headers.
 
 ## Credential lifecycle and limitations

@@ -150,10 +150,22 @@ async function provisionTenant(admin, fixture) {
 
 async function provisionLifecycleFixtures(admin, tenant) {
   const provisioned = {};
+  const { error: invitationLineageCleanupError } = await admin
+    .from("organization_invitations")
+    .update({
+      replaced_at: null,
+      replacement_invitation_id: null,
+    })
+    .like("invited_email", "%@portal.test");
+  if (invitationLineageCleanupError) {
+    throw new Error(
+      `Could not reset invitation lineage: ${invitationLineageCleanupError.message}`,
+    );
+  }
   const { error: invitationCleanupError } = await admin
     .from("organization_invitations")
     .delete()
-    .eq("invited_email", lifecycleFixtures.pendingClient.email);
+    .like("invited_email", "%@portal.test");
   if (invitationCleanupError) {
     throw new Error(
       `Could not reset invitation fixture: ${invitationCleanupError.message}`,

@@ -1,0 +1,35 @@
+meta {
+  name: Issue invitation
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/invitations
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Cookie: {{process.env.PORTAL_STAFF_COOKIE}}
+}
+
+body:json {
+  {
+    "organizationId": "{{process.env.PORTAL_STAFF_ORGANIZATION_ID}}",
+    "email": "bruno-invited-client@portal.test"
+  }
+}
+
+tests {
+  test("issues a safe invitation representation", function () {
+    const body = res.getBody();
+    expect(res.getStatus()).to.equal(201);
+    expect(body.data.type).to.equal("invitations");
+    expect(body.data.attributes.status).to.equal("pending");
+    expect(JSON.stringify(body)).not.to.include("token");
+    expect(JSON.stringify(body)).not.to.include("hash");
+    bru.setVar("invitationId", body.data.id);
+  });
+}

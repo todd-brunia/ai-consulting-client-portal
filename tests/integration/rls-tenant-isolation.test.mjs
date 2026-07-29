@@ -231,6 +231,69 @@ describe("invitation membership lifecycle RLS", () => {
     },
   );
 
+  test("staff lifecycle mutations enforce duplicate, replacement, and revocation semantics", async () => {
+    const client = await signIn(
+      lifecycle.staff.email,
+      lifecycle.staff.password,
+    );
+    const email = "lifecycle-api-client@portal.test";
+    const issue = (suffix) =>
+      client.rpc("staff_issue_organization_invitation", {
+        target_organization_id: lifecycle.otherOrganizationId,
+        normalized_email: email,
+        invitation_token_hash: createHash("sha256")
+          .update(`staff-lifecycle:${suffix}`)
+          .digest("hex"),
+      });
+
+    const [first, duplicate] = await Promise.all([
+      issue("first"),
+      issue("duplicate"),
+    ]);
+    expect(first.error).toBeNull();
+    expect(duplicate.error).toBeNull();
+    const outcomes = [first.data.outcome, duplicate.data.outcome].sort();
+    expect(outcomes).toEqual(["conflict", "created"]);
+    const created = first.data.outcome === "created" ? first.data : duplicate.data;
+    expect(JSON.stringify(created)).not.toContain("token_hash");
+    expect(created.invitation.status).toBe("pending");
+
+    const replacement = await client.rpc(
+      "staff_replace_organization_invitation",
+      {
+        target_invitation_id: created.invitation.id,
+        replacement_token_hash: createHash("sha256")
+          .update("staff-lifecycle:replacement")
+          .digest("hex"),
+      },
+    );
+    expect(replacement.error).toBeNull();
+    expect(replacement.data.outcome).toBe("replaced");
+    expect(replacement.data.invitation.status).toBe("pending");
+    expect(new Date(replacement.data.invitation.expires_at).getTime())
+      .toBeGreaterThan(Date.now() + 71 * 60 * 60 * 1000);
+
+    const staleRevoke = await client.rpc(
+      "staff_revoke_organization_invitation",
+      { target_invitation_id: created.invitation.id },
+    );
+    expect(staleRevoke.error).toBeNull();
+    expect(staleRevoke.data.outcome).toBe("conflict");
+
+    const revoked = await client.rpc(
+      "staff_revoke_organization_invitation",
+      { target_invitation_id: replacement.data.invitation.id },
+    );
+    const repeated = await client.rpc(
+      "staff_revoke_organization_invitation",
+      { target_invitation_id: replacement.data.invitation.id },
+    );
+    expect(revoked.data.outcome).toBe("revoked");
+    expect(repeated.data.outcome).toBe("revoked");
+    expect(repeated.data.invitation.id).toBe(revoked.data.invitation.id);
+    await client.auth.signOut();
+  });
+
   test("rejects malformed, expired, revoked, replaced, and mismatched invitations without disclosure", async () => {
     const pendingClient = await signIn(
       lifecycle.pendingClient.email,

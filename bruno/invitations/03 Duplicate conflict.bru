@@ -1,0 +1,33 @@
+meta {
+  name: Duplicate conflict
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/invitations
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Cookie: {{process.env.PORTAL_STAFF_COOKIE}}
+}
+
+body:json {
+  {
+    "organizationId": "{{process.env.PORTAL_STAFF_ORGANIZATION_ID}}",
+    "email": "bruno-invited-client@portal.test"
+  }
+}
+
+tests {
+  test("does not silently replace a live invitation", function () {
+    const body = res.getBody();
+    expect(res.getStatus()).to.equal(409);
+    expect(body.errors[0].code).to.equal(
+      "invitation_lifecycle_conflict"
+    );
+  });
+}

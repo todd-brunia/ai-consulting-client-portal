@@ -48,3 +48,22 @@ execFileSync(
     stdio: "inherit",
   },
 );
+
+execFileSync(
+  "npx",
+  [
+    "bru",
+    "run",
+    "invitations",
+    "-r",
+    "--env",
+    "Local",
+    "--bail",
+    "--reporter-skip-all-headers",
+  ],
+  {
+    cwd: resolve("bruno"),
+    env: childEnvironment,
+    stdio: "inherit",
+  },
+);
