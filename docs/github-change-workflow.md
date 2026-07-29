@@ -24,8 +24,10 @@ needs-planning → plan-ready → approved-for-build → in-progress → preview
 ```
 
 Applying `approved-for-build` freezes the newest marked plan and the trusted
-planning discussion preceding approval. Applying it does not start AI work.
-`approved-for-ai-build` is the separate implementation trigger.
+planning discussion preceding approval. It authorizes the manual implementation
+path, including explicitly invoked local interactive Codex work, but does not
+start label-triggered automation. `approved-for-ai-build` is the separate
+automation trigger.
 
 ## Automation boundary
 
