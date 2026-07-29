@@ -157,6 +157,7 @@ jobs:
               stage,
               fingerprint: result.digest,
               source: result.source,
+              authorization: result.authorization,
             }, null, 2));
 
       - name: Preserve trusted patch validator
