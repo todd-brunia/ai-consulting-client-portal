@@ -249,7 +249,7 @@ async function provisionLifecycleFixtures(admin, tenant) {
     const { data, error } = await admin
       .from("organization_invitations")
       .insert({
-        organization_id: tenant.organizationId,
+        organization_id: provisioned.pendingClient.organizationId,
         invited_by_application_user_id: provisioned.staff.applicationUserId,
         invited_email: lifecycleFixtures.pendingClient.email,
         token_hash: tokenHash,
@@ -269,6 +269,8 @@ async function provisionLifecycleFixtures(admin, tenant) {
     current: await createInvitation("current"),
     consumed: await createInvitation("consumed", {
       consumed_at: "2026-01-02T00:00:00.000Z",
+      consumed_by_application_user_id:
+        provisioned.pendingClient.applicationUserId,
     }),
     revoked: await createInvitation("revoked", {
       revoked_at: "2026-01-02T00:00:00.000Z",
@@ -295,7 +297,11 @@ async function provisionLifecycleFixtures(admin, tenant) {
   invitationIds.replaced = replacedInvitationId;
   invitationIds.replacement = replacementInvitationId;
 
-  return { ...provisioned, invitationIds };
+  return {
+    ...provisioned,
+    invitationIds,
+    otherOrganizationId: tenant.organizationId,
+  };
 }
 
 async function provisionMachineIntegration(

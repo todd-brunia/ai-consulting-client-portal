@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { createHash } from "node:crypto";
 import {
   SignJWT,
   exportJWK,
@@ -229,6 +230,97 @@ describe("invitation membership lifecycle RLS", () => {
       await client.auth.signOut();
     },
   );
+
+  test("rejects malformed, expired, revoked, replaced, and mismatched invitations without disclosure", async () => {
+    const pendingClient = await signIn(
+      lifecycle.pendingClient.email,
+      lifecycle.pendingClient.password,
+    );
+    for (const token of ["expired", "revoked", "replaced"]) {
+      const tokenHash = createHash("sha256")
+        .update(`local-integration-only-invitation-token:${token}`)
+        .digest("hex");
+      const { data, error } = await pendingClient.rpc(
+        "accept_organization_invitation",
+        { invitation_token_hash: tokenHash },
+      );
+      expect(error).toBeNull();
+      expect(data).toBe("unavailable");
+    }
+    const malformed = await pendingClient.rpc(
+      "accept_organization_invitation",
+      { invitation_token_hash: "not-a-hash" },
+    );
+    expect(malformed.error).toBeNull();
+    expect(malformed.data).toBe("unavailable");
+    await pendingClient.auth.signOut();
+
+    const wrongClient = await signIn(
+      lifecycle.revokedClient.email,
+      lifecycle.revokedClient.password,
+    );
+    const currentHash = createHash("sha256")
+      .update("local-integration-only-invitation-token:current")
+      .digest("hex");
+    const mismatched = await wrongClient.rpc(
+      "accept_organization_invitation",
+      { invitation_token_hash: currentHash },
+    );
+    expect(mismatched.error).toBeNull();
+    expect(mismatched.data).toBe("unavailable");
+    await wrongClient.auth.signOut();
+  });
+
+  test("atomically activates only the invited membership and is safely idempotent", async () => {
+    const client = await signIn(
+      lifecycle.pendingClient.email,
+      lifecycle.pendingClient.password,
+    );
+    const tokenHash = createHash("sha256")
+      .update("local-integration-only-invitation-token:current")
+      .digest("hex");
+
+    const first = await client.rpc("accept_organization_invitation", {
+      invitation_token_hash: tokenHash,
+    });
+    expect(first.error).toBeNull();
+    expect(first.data).toBe("accepted");
+
+    const second = await client.rpc("accept_organization_invitation", {
+      invitation_token_hash: tokenHash,
+    });
+    expect(second.error).toBeNull();
+    expect(second.data).toBe("already_accepted");
+
+    const { data: ownOrganizations, error: ownError } = await client
+      .from("organizations")
+      .select("id")
+      .eq("id", lifecycle.pendingClient.organizationId);
+    const { data: otherOrganizations, error: otherError } = await client
+      .from("organizations")
+      .select("id")
+      .eq("id", lifecycle.otherOrganizationId);
+    expect(ownError).toBeNull();
+    expect(ownOrganizations).toEqual([
+      { id: lifecycle.pendingClient.organizationId },
+    ]);
+    expect(otherError).toBeNull();
+    expect(otherOrganizations).toEqual([]);
+
+    const { data: membership, error: membershipError } = await client
+      .from("organization_memberships")
+      .select("organization_id, role, status, activated_at")
+      .eq("organization_id", lifecycle.pendingClient.organizationId)
+      .single();
+    expect(membershipError).toBeNull();
+    expect(membership).toMatchObject({
+      organization_id: lifecycle.pendingClient.organizationId,
+      role: "client_member",
+      status: "active",
+    });
+    expect(membership.activated_at).not.toBeNull();
+    await client.auth.signOut();
+  });
 
   test("staff authority can read invitation lifecycle records without client membership", async () => {
     const client = await signIn(

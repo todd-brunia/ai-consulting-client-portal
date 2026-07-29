@@ -1,8 +1,8 @@
 # Invitation identity and membership foundation
 
-Issue #39 establishes the local persistence contract for invitation-only
-client onboarding. It deliberately does not create an invitation route,
-acceptance route, email delivery path, or hosted configuration.
+Issue #39 established the persistence contract for invitation-only client
+onboarding. Issue #41 adds local client authentication and acceptance while
+leaving email delivery and hosted configuration out of scope.
 
 ## Identity and authority
 
@@ -33,14 +33,24 @@ the opaque invitation token, never the token itself. A lifecycle record can be
 consumed, revoked, or replaced once; expiration is derived from `expires_at`.
 Replacement records identify the invitation that superseded the earlier record.
 
-The migration and deterministic fixtures demonstrate the persistence contract
-only. Local activation proves invitation acceptance and organization access; it
-does not prove phone verification, terms acceptance, SMS consent, hosted
-delivery, or production onboarding readiness.
+The `/invite?token=...` experience removes the raw token from the browser URL
+before rendering the page, retains only its SHA-256 hash in a short-lived,
+HttpOnly cookie, and requires Supabase authentication before acceptance. The
+server-authorized database function locks the invitation, compares its hash and
+normalized email, rejects every inactive lifecycle state with the same
+non-disclosing result, and atomically activates only the matching pending
+membership. The consuming identity is retained so the same user can safely
+repeat a successful request.
+
+Ordinary signup and authentication create only an application identity; neither
+operation creates or activates organization membership. Local activation proves
+invitation acceptance and organization access, but it does not prove phone
+verification, terms acceptance, SMS consent, hosted delivery, or production
+onboarding readiness.
 
 ## Deferred controls
 
-Staff invitation issuance, token generation and acceptance, email delivery,
-hosted Supabase configuration, production verification, and production
-onboarding controls require separately approved work. Until then, fixture
-provisioning is server-side and local/CI-only.
+Staff invitation issuance, production token delivery, hosted Supabase
+configuration, production verification, and production onboarding controls
+require separately approved work. Until then, invitation provisioning is
+server-side and local/CI-only, and hosted onboarding remains fail-closed.
