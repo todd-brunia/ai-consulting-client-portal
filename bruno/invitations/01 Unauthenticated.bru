@@ -1,0 +1,19 @@
+meta {
+  name: Unauthenticated
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/invitations?organizationId={{process.env.PORTAL_STAFF_ORGANIZATION_ID}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("returns the generic authentication error", function () {
+    const body = res.getBody();
+    expect(res.getStatus()).to.equal(401);
+    expect(body.errors[0].code).to.equal("unauthorized");
+  });
+}

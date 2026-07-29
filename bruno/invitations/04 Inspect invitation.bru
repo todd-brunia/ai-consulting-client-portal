@@ -1,0 +1,27 @@
+meta {
+  name: Inspect invitation
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/invitations/{{invitationId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: {{process.env.PORTAL_STAFF_COOKIE}}
+}
+
+tests {
+  test("returns safe lifecycle and lineage fields", function () {
+    const body = res.getBody();
+    expect(res.getStatus()).to.equal(200);
+    expect(body.data.id).to.equal(bru.getVar("invitationId"));
+    expect(body.data.attributes.email).to.equal(
+      "bruno-invited-client@portal.test"
+    );
+    expect(JSON.stringify(body)).not.to.include("token");
+  });
+}

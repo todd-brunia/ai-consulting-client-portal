@@ -1,0 +1,25 @@
+meta {
+  name: Replace invitation
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/v1/invitations/{{invitationId}}/replace
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: {{process.env.PORTAL_STAFF_COOKIE}}
+}
+
+tests {
+  test("explicitly replaces the pending invitation", function () {
+    const body = res.getBody();
+    expect(res.getStatus()).to.equal(201);
+    expect(body.data.id).not.to.equal(bru.getVar("invitationId"));
+    expect(body.data.attributes.status).to.equal("pending");
+    bru.setVar("replacementInvitationId", body.data.id);
+  });
+}

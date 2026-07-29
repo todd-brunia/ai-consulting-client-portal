@@ -14,7 +14,12 @@ const secretValues = {
 describe("Bruno local fixture environment", () => {
   test("exposes only the supported machine-request credential cases", () => {
     expect(
-      createBrunoSecretEnvironment({ tenantA: secretValues }),
+      createBrunoSecretEnvironment({
+        tenantA: {
+          ...secretValues,
+          organizationId: "organization-1",
+        },
+      }),
     ).toEqual({
       PORTAL_API_KEY: "allowed-key",
       PORTAL_MALFORMED_API_KEY: "not-a-portal-key",
@@ -22,6 +27,7 @@ describe("Bruno local fixture environment", () => {
         `portal_agent_8899aabbccddeeff_${"B".repeat(43)}`,
       PORTAL_NO_CAPABILITY_API_KEY: "denied-key",
       PORTAL_NO_GRANT_API_KEY: "no-grant-key",
+      PORTAL_STAFF_ORGANIZATION_ID: "organization-1",
     });
   });
 
