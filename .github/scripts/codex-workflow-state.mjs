@@ -27,6 +27,9 @@ export const STAGES = {
   "approved-for-split": "split",
 };
 
+const IMPLEMENTATION_APPROVALS = ["approved-for-build", "approved-for-ai-build"];
+const TRUSTED_IMPLEMENTATION_VALIDATOR = "trusted-default-branch-workflow-state";
+
 export const PLANNING_CLASSIFICATIONS = new Set([
   "focused",
   "needs-decision",
@@ -269,7 +272,7 @@ export function planningSnapshot(issue, comments, cutoff = null) {
   };
 }
 
-export function buildContext({ issue, comments, stage, cutoff }) {
+export function buildContext({ issue, comments, stage, cutoff, authorization }) {
   const snapshot = planningSnapshot(issue, comments, cutoff);
   const source =
     stage === "plan"
@@ -277,8 +280,28 @@ export function buildContext({ issue, comments, stage, cutoff }) {
       : snapshot;
 
   if (!source) throw new Error("A marked implementation plan is required.");
-  const digest = fingerprint({ stage, source });
-  return { digest, source, marker: marker(stage, issue.number, digest) };
+  const fingerprintSource = authorization ? { stage, source, authorization } : { stage, source };
+  const digest = fingerprint(fingerprintSource);
+  return { digest, source, authorization, marker: marker(stage, issue.number, digest) };
+}
+
+function implementationAuthorization(labels, validationCutoff) {
+  const cutoff = new Date(validationCutoff);
+  if (Number.isNaN(cutoff.getTime())) {
+    throw new Error("Implementation approval validation requires an immutable workflow cutoff.");
+  }
+  if (IMPLEMENTATION_APPROVALS.some((label) => !labels.includes(label))) {
+    throw new Error("Both human approval labels must be present when implementation state is validated.");
+  }
+
+  return {
+    validator: TRUSTED_IMPLEMENTATION_VALIDATOR,
+    validationCutoff: cutoff.toISOString(),
+    approvals: {
+      approvedForBuild: true,
+      approvedForAiBuild: true,
+    },
+  };
 }
 
 const PULL_REQUEST_TITLE_MAX_LENGTH = 120;
@@ -336,14 +359,10 @@ export function evaluateTrigger({
   const labels = issue.labels.map((label) =>
     typeof label === "string" ? label : label.name,
   );
-  const expectedLabel = Object.entries(STAGES).find(([, stage]) => stage === requestedStage)?.[0];
-  if (!expectedLabel || !labels.includes(expectedLabel)) {
-    return { action: "skip", reason: "The requested stage label is no longer present." };
-  }
-
+  let authorization;
   if (requestedStage === "implement") {
-    if (!labels.includes("approved-for-build")) {
-      return { action: "block", reason: "Human approval for the documented plan is required." };
+    if (IMPLEMENTATION_APPROVALS.some((label) => !labels.includes(label))) {
+      return { action: "block", reason: "Both human approval labels are required for implementation." };
     }
     if (labels.includes("changes-requested")) {
       return { action: "block", reason: "Planning changes are still requested." };
@@ -351,6 +370,16 @@ export function evaluateTrigger({
     const blockedStates = ["needs-decision", "split-proposed", "approved-for-split", "split-parent"];
     if (blockedStates.some((label) => labels.includes(label))) {
       return { action: "block", reason: "The issue is not in a focused implementation state." };
+    }
+    try {
+      authorization = implementationAuthorization(labels, cutoff);
+    } catch (error) {
+      return { action: "block", reason: error.message };
+    }
+  } else {
+    const expectedLabel = Object.entries(STAGES).find(([, stage]) => stage === requestedStage)?.[0];
+    if (!expectedLabel || !labels.includes(expectedLabel)) {
+      return { action: "skip", reason: "The requested stage label is no longer present." };
     }
   }
 
@@ -365,7 +394,7 @@ export function evaluateTrigger({
 
   let context;
   try {
-    context = buildContext({ issue, comments, stage: requestedStage, cutoff });
+    context = buildContext({ issue, comments, stage: requestedStage, cutoff, authorization });
   } catch (error) {
     return { action: "block", reason: error.message };
   }
@@ -443,4 +472,3 @@ export function failureTransitionFor(stage) {
   const triggerLabel = Object.entries(STAGES).find(([, value]) => value === stage)?.[0];
   return { remove: triggerLabel ? [triggerLabel] : [], add: ["blocked"] };
 }
-
