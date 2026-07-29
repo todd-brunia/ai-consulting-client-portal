@@ -8,13 +8,19 @@ export async function authenticate(formData: FormData) {
   const email = String(formData.get("email"));
   const password = String(formData.get("password"));
   const mode = formData.get("mode");
+  const requestedReturnTo = String(formData.get("returnTo") ?? "");
+  const returnTo =
+    requestedReturnTo.startsWith("/") &&
+    !requestedReturnTo.startsWith("//")
+      ? requestedReturnTo
+      : "/";
 
   const result = mode === "signup"
     ? await supabase.auth.signUp({ email, password })
     : await supabase.auth.signInWithPassword({ email, password });
 
   if (result.error) redirect(`/login?error=${encodeURIComponent(result.error.message)}`);
-  redirect("/");
+  redirect(returnTo);
 }
 
 export async function signOut() {

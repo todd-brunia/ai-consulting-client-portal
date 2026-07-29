@@ -52,6 +52,14 @@ npm run supabase:reset
 npm run bruno:dev
 ```
 
+Sign in at `/login` with the local staff fixture
+`staff-admin@portal.test` / `local-integration-only-password`, then open
+`/staff/invitations`. The interface lets an authorized staff administrator
+select an organization, issue an invitation using a normalized email address,
+inspect lifecycle details, and explicitly replace or revoke an invitation.
+Status and error feedback is announced to assistive technology and receives
+focus after each operation.
+
 In another terminal, run `npm run bruno:setup` for the desktop collection or
 `npm run test:bruno` for the pinned CLI contract. The ignored Bruno environment
 contains a short-lived local staff session and organization ID. Do not copy
@@ -59,4 +67,5 @@ that cookie into tracked files, prompts, screenshots, or support transcripts.
 
 Production email/SMS, hosted provider configuration, client acceptance changes,
 organization creation, phone verification, consent, terms, and additional
-roles are not part of this API.
+roles are not part of this API or interface. The interface never displays a raw
+invitation token.
