@@ -304,6 +304,31 @@ function implementationAuthorization(labels, validationCutoff) {
   };
 }
 
+export function validateImplementationAuthorization(authorization) {
+  if (!authorization || typeof authorization !== "object" || Array.isArray(authorization)) {
+    throw new Error("Authorization refused: trusted implementation authorization is required.");
+  }
+  if (authorization.validator !== TRUSTED_IMPLEMENTATION_VALIDATOR) {
+    throw new Error("Authorization refused: untrusted validator.");
+  }
+
+  const cutoff = new Date(authorization.validationCutoff);
+  if (
+    Number.isNaN(cutoff.getTime()) ||
+    authorization.validationCutoff !== cutoff.toISOString()
+  ) {
+    throw new Error("Authorization refused: stale or invalid workflow cutoff.");
+  }
+  if (
+    authorization.approvals?.approvedForBuild !== true ||
+    authorization.approvals?.approvedForAiBuild !== true
+  ) {
+    throw new Error("Authorization refused: both trusted human approvals are required.");
+  }
+
+  return authorization;
+}
+
 const PULL_REQUEST_TITLE_MAX_LENGTH = 120;
 
 function normalizedTitleText(value) {
@@ -480,7 +505,11 @@ function addedPatchContent(patch) {
   return added.join("\n");
 }
 
-export function validatePatch(patch, { maxBytes = 500_000 } = {}) {
+export function validatePatch(patch, options = {}) {
+  const { maxBytes = 500_000 } = options;
+  if (Object.hasOwn(options, "authorization")) {
+    validateImplementationAuthorization(options.authorization);
+  }
   if (!patch.trim()) throw new Error("Codex produced an empty patch.");
   if (Buffer.byteLength(patch) > maxBytes) throw new Error("Patch exceeds the size limit.");
   const addedContent = addedPatchContent(patch);

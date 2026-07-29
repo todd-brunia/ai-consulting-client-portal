@@ -195,7 +195,7 @@ jobs:
           git add -N --all
           git reset -- codex-input.json codex-output.json
           git diff --binary --output=codex.patch
-          node --input-type=module -e "import fs from 'node:fs'; const {validatePatch} = await import('file://${{ runner.temp }}/codex-workflow-state.mjs'); validatePatch(fs.readFileSync('codex.patch', 'utf8'))"
+          node --input-type=module -e "import fs from 'node:fs'; const input = JSON.parse(fs.readFileSync('codex-input.json', 'utf8')); const {validatePatch} = await import('file://${{ runner.temp }}/codex-workflow-state.mjs'); validatePatch(fs.readFileSync('codex.patch', 'utf8'), { authorization: input.authorization })"
 
       - name: Upload sanitized result
         if: steps.context.outputs.action == 'run'
@@ -302,7 +302,7 @@ jobs:
 
       - name: Validate and apply patch
         run: |
-          node --input-type=module -e "import fs from 'node:fs'; const {validatePatch,validatePublicText} = await import('./.github/scripts/codex-workflow-state.mjs'); validatePatch(fs.readFileSync('codex.patch', 'utf8')); validatePublicText(fs.readFileSync('codex-output.json', 'utf8'))"
+          node --input-type=module -e "import fs from 'node:fs'; const input = JSON.parse(fs.readFileSync('codex-input.json', 'utf8')); const {validatePatch,validatePublicText} = await import('./.github/scripts/codex-workflow-state.mjs'); validatePatch(fs.readFileSync('codex.patch', 'utf8'), { authorization: input.authorization }); validatePublicText(fs.readFileSync('codex-output.json', 'utf8'))"
           git apply --check codex.patch
           git apply codex.patch
 
