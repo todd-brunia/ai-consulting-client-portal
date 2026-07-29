@@ -64,6 +64,11 @@ runs the authenticated RLS and JSON:API endpoint suites. It leaves the local
 stack running for inspection; stop it afterward with `npm run supabase:stop`,
 or use `npm run supabase:stop -- --no-backup` to remove its local data.
 
+Production-built local browser checks use the same disposable Supabase
+foundation. See [`docs/playwright-local.md`](docs/playwright-local.md) for the
+required Playwright command, authoring modes, safety boundary, cleanup
+guarantees, and serial-execution policy.
+
 Each check is named in the output so schema, fixture, RLS, and endpoint failures
 remain distinguishable. Supabase status output is captured where credentials
 are needed; fixture provisioning uses the local service-role key only inside
