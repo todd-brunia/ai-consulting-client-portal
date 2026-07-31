@@ -69,10 +69,24 @@ database assertions rather than recording secrets.
 
 ## Continuous integration behavior
 
-Every pull request and push to `main` runs the `Chromium Playwright` job against
-an isolated local Supabase stack. The job installs Chromium, resets the
-database, invokes the same production-build `npm run test:e2e` path, and removes
-the stack in an unconditional cleanup step. Video is disabled because failure
+Every pull request and push to `main` calculates whether the `Chromium
+Playwright` job is required from the complete changed-path set. Relevant changes
+include the application, Supabase, end-to-end tests, Playwright runner and
+configuration, package and framework configuration, and the CI detector itself.
+The explicit, conservative list is maintained in
+[`../.github/ci-playwright-paths.txt`](../.github/ci-playwright-paths.txt);
+update that manifest and its detector tests whenever a newly added path can
+affect browser behavior. Both sides of renames are evaluated, while missing or
+unavailable comparison revisions fail open and run the suite. Documentation-only
+and unrelated repository-automation changes intentionally skip it without
+skipping fast validation or the stable `CI Gate` check.
+
+When required, the job runs against an isolated local Supabase stack. It
+installs Chromium, resets the database, invokes the same production-build
+`npm run test:e2e` path, and removes the stack in an unconditional cleanup step.
+Use the CI workflow's `Run workflow` control with **Run the complete Chromium
+Playwright suite regardless of changed paths** enabled to force the full suite
+for troubleshooting or release confidence. Video is disabled because failure
 screenshots, the HTML report, and traces provide the required diagnostics with
 less sensitive output and lower storage cost.
 
@@ -83,8 +97,10 @@ job and prevents artifact upload. Invitation suites disable tracing and video;
 their reports and screenshots must not contain invitation values.
 
 The exact branch-protection status check remains `CI Gate`. Before merge, that
-stable aggregate check requires `Chromium Playwright` to succeed along with
-fast validation, path detection, and any required Supabase integration work.
+stable aggregate check requires `Chromium Playwright` to succeed when it is
+required and to be skipped only when the detector declares it unnecessary,
+along with fast validation, path detection, and any required Supabase
+integration work.
 The subsequent `CI Gate` run on the merged push to `main` verifies the resulting
 default-branch state; it does not replace the pre-merge required check.
 

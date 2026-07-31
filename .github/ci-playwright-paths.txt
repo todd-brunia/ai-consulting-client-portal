@@ -1,0 +1,14 @@
+src/**
+supabase/**
+tests/e2e/**
+scripts/*playwright*
+scripts/setup-machine-signing-key.mjs
+package.json
+package-lock.json
+playwright.config.*
+next.config.*
+postcss.config.mjs
+tsconfig.json
+vitest.config.mts
+vitest.integration.config.mts
+.env.local.example
