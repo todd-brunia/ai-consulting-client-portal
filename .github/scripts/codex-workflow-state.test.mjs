@@ -580,6 +580,64 @@ describe("workflow state", () => {
     expect(() => validatePatch(valid, { maxBytes: 2 })).toThrow(/size/);
   });
 
+  it("accepts Git text patches with blank separators after completed hunks", () => {
+    const patch = [
+      "diff --git a/README.md b/README.md",
+      "index 1111111..2222222 100644",
+      "--- a/README.md",
+      "+++ b/README.md",
+      "@@ -1 +1 @@",
+      "-Before",
+      "+After",
+      "",
+      "diff --git a/docs/ui-component-strategy.md b/docs/ui-component-strategy.md",
+      "new file mode 100644",
+      "index 0000000..3333333",
+      "--- /dev/null",
+      "+++ b/docs/ui-component-strategy.md",
+      "@@ -0,0 +1,2 @@",
+      "+# UI component strategy",
+      "+Keep components small and accessible.",
+      "",
+    ].join("\n");
+
+    expect(validatePatch(patch)).toEqual(["README.md", "docs/ui-component-strategy.md"]);
+  });
+
+  it("accepts blank separators between completed hunks", () => {
+    const patch = [
+      "diff --git a/docs/a.md b/docs/a.md",
+      "index 1111111..2222222 100644",
+      "--- a/docs/a.md",
+      "+++ b/docs/a.md",
+      "@@ -1 +1 @@",
+      "-Before",
+      "+After",
+      "",
+      "@@ -4 +4 @@",
+      "-Earlier",
+      "+Later",
+      "",
+    ].join("\n");
+
+    expect(validatePatch(patch)).toEqual(["docs/a.md"]);
+  });
+
+  it("rejects blank lines before a completed hunk", () => {
+    const patch = [
+      "diff --git a/docs/a.md b/docs/a.md",
+      "",
+      "--- a/docs/a.md",
+      "+++ b/docs/a.md",
+      "@@ -1 +1 @@",
+      "-Before",
+      "+After",
+      "",
+    ].join("\n");
+
+    expect(() => validatePatch(patch)).toThrow(/malformed diff content at line 2 \(invalid file metadata\)/);
+  });
+
   it("reports invalid implementation authorization before an empty patch", () => {
     const authorization = {
       validator: "trusted-default-branch-workflow-state",
@@ -668,12 +726,27 @@ describe("workflow state", () => {
     }
   });
 
+  it("fails closed for an incomplete hunk with safe diagnostics", () => {
+    const credentialLikeFixture = ["sk", "abcdefghijklmnopqrstuvwxyz123456"].join("-");
+    const patch = [
+      "diff --git a/docs/a.md b/docs/a.md",
+      "--- a/docs/a.md",
+      "+++ b/docs/a.md",
+      "@@ -1 +1 @@",
+      `+${credentialLikeFixture}`,
+      "diff --git a/docs/b.md b/docs/b.md",
+      "",
+    ].join("\n");
+
+    expect(() => validatePatch(patch)).toThrow(/malformed diff hunk at line 6 \(incomplete hunk\)/);
+    try {
+      validatePatch(patch);
+    } catch (error) {
+      expect(error.message).not.toContain(credentialLikeFixture);
+    }
+  });
+
   it.each([
-    [
-      "a malformed hunk",
-      "diff --git a/docs/a.md b/docs/a.md\n--- a/docs/a.md\n+++ b/docs/a.md\n@@ -1 +1 @@\n+After\n",
-      /malformed/,
-    ],
     [
       "a binary patch",
       "diff --git a/public/a.png b/public/a.png\nGIT binary patch\nliteral 1\nA\n",

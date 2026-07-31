@@ -70,6 +70,10 @@ Do not bypass or weaken either approval gate to recover a failed run. Fix the
 trusted validation, repository configuration, credential handling, or other
 root cause first; then use the label sequence above for the retry.
 
+For issue #73, wait until the patch-validator fix is merged to `main`, then
+remove `blocked` and reapply `approved-for-ai-build`. Do not rerun the failed
+job; it uses the validator version that rejected the valid patch.
+
 ## Required repository configuration
 
 - Variables: `CODEX_AUTOMATION_ENABLED`, `CODEX_ALLOWED_ACTORS`, and
