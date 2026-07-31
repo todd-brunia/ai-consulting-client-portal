@@ -15,17 +15,21 @@ export function readRelevantPatterns(
     .filter(Boolean);
 }
 
-function globToRegExp(glob) {
+export function globToRegExp(glob) {
   const escaped = glob.replace(/[.+?^${}()|[\]\\]/gu, "\\$&");
   const withGlobstar = escaped.replaceAll("**", "\0");
   const withStars = withGlobstar.replaceAll("*", "[^/]*");
   return new RegExp(`^${withStars.replaceAll("\0", ".*")}$`, "u");
 }
 
-export function requiresSupabaseIntegration(
+export function requiresRelevantCheck(
   changedPaths,
-  patterns = readRelevantPatterns(),
-  { revisionsKnown = true, revisionsAvailable = true } = {},
+  patterns,
+  {
+    alwaysRelevantPaths: requiredPaths = new Set(),
+    revisionsKnown = true,
+    revisionsAvailable = true,
+  } = {},
 ) {
   if (!revisionsKnown || !revisionsAvailable) {
     return true;
@@ -34,7 +38,18 @@ export function requiresSupabaseIntegration(
   const matchers = patterns.map(globToRegExp);
   return changedPaths.some(
     (path) =>
-      alwaysRelevantPaths.has(path) ||
+      requiredPaths.has(path) ||
       matchers.some((matcher) => matcher.test(path)),
   );
+}
+
+export function requiresSupabaseIntegration(
+  changedPaths,
+  patterns = readRelevantPatterns(),
+  options = {},
+) {
+  return requiresRelevantCheck(changedPaths, patterns, {
+    ...options,
+    alwaysRelevantPaths,
+  });
 }

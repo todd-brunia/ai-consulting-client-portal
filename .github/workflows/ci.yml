@@ -3,6 +3,13 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_playwright:
+        description: Run the complete Chromium Playwright suite regardless of changed paths
+        required: false
+        default: true
+        type: boolean
 permissions:
   contents: read
 concurrency:
@@ -110,8 +117,37 @@ jobs:
         if: always()
         run: npm run supabase:stop -- --no-backup > /dev/null
 
+  detect-playwright-changes:
+    name: Detect Playwright-relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      required: ${{ steps.detect.outputs.required }}
+    steps:
+      - name: Check out history without executing repository code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Detect relevant paths
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          FORCE_PLAYWRIGHT: ${{ github.event_name == 'workflow_dispatch' && inputs.run_playwright == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          required="$(node .github/scripts/playwright-relevant-paths.mjs)"
+          echo "required=$required" >> "$GITHUB_OUTPUT"
+          if [[ "$required" == true ]]; then
+            echo "Chromium Playwright is required." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Chromium Playwright is intentionally skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   playwright:
     name: Chromium Playwright
+    needs: detect-playwright-changes
+    if: needs.detect-playwright-changes.outputs.required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -159,15 +195,20 @@ jobs:
       - fast-validation
       - detect-supabase-changes
       - supabase-integration
+      - detect-playwright-changes
       - playwright
     runs-on: ubuntu-latest
     steps:
+      - name: Check out CI Gate contract
+        uses: actions/checkout@v5
       - name: Verify required checks
         env:
           FAST_RESULT: ${{ needs.fast-validation.result }}
           DETECTOR_RESULT: ${{ needs.detect-supabase-changes.result }}
           INTEGRATION_REQUIRED: ${{ needs.detect-supabase-changes.outputs.required }}
           INTEGRATION_RESULT: ${{ needs.supabase-integration.result }}
+          PLAYWRIGHT_REQUIRED: ${{ needs.detect-playwright-changes.outputs.required }}
+          PLAYWRIGHT_DETECTOR_RESULT: ${{ needs.detect-playwright-changes.result }}
           PLAYWRIGHT_RESULT: ${{ needs.playwright.result }}
         shell: bash
         run: |
@@ -180,8 +221,8 @@ jobs:
             echo "Path detector result: $DETECTOR_RESULT" >&2
             exit 1
           fi
-          if [[ "$PLAYWRIGHT_RESULT" != success ]]; then
-            echo "Chromium Playwright result: $PLAYWRIGHT_RESULT" >&2
+          if [[ "$PLAYWRIGHT_DETECTOR_RESULT" != success ]]; then
+            echo "Playwright path detector result: $PLAYWRIGHT_DETECTOR_RESULT" >&2
             exit 1
           fi
           case "$INTEGRATION_REQUIRED:$INTEGRATION_RESULT" in
@@ -191,4 +232,5 @@ jobs:
               exit 1
               ;;
           esac
+          node .github/scripts/ci-gate-contract.mjs "$PLAYWRIGHT_REQUIRED" "$PLAYWRIGHT_RESULT"
           echo "CI gate passed with Supabase integration: $INTEGRATION_RESULT and Chromium Playwright: $PLAYWRIGHT_RESULT"
