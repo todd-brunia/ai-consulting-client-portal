@@ -64,6 +64,8 @@ describe("Playwright CI workflow", () => {
     expect(gateJob).toContain(
       "PLAYWRIGHT_REQUIRED: ${{ needs.detect-playwright-changes.outputs.required }}",
     );
+    expect(gateJob).toContain("name: Check out CI Gate contract");
+    expect(gateJob).toContain("uses: actions/checkout@v5");
     expect(gateJob).toContain("node .github/scripts/ci-gate-contract.mjs");
   });
 });

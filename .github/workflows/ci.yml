@@ -199,6 +199,8 @@ jobs:
       - playwright
     runs-on: ubuntu-latest
     steps:
+      - name: Check out CI Gate contract
+        uses: actions/checkout@v5
       - name: Verify required checks
         env:
           FAST_RESULT: ${{ needs.fast-validation.result }}
