@@ -432,18 +432,25 @@ export function evaluateTrigger({
 }
 
 const PATCH_METADATA_PATTERN =
-  /^(?:index [0-9a-f]+\.\.[0-9a-f]+(?: \d+)?|(?:old|new|deleted file) mode \d+|similarity index \d+%|dissimilarity index \d+%|rename (?:from|to) .+|copy (?:from|to) .+|--- (?:a\/.+|\/dev\/null)|\+\+\+ (?:b\/.+|\/dev\/null))$/;
+  /^(?:index [0-9a-f]+\.\.[0-9a-f]+(?: \d+)?|(?:old|new|new file|deleted file) mode \d+|similarity index \d+%|dissimilarity index \d+%|rename (?:from|to) .+|copy (?:from|to) .+|--- (?:a\/.+|\/dev\/null)|\+\+\+ (?:b\/.+|\/dev\/null))$/;
 
 function addedPatchContent(patch) {
   const added = [];
   let sawFile = false;
   let inHunk = false;
+  let canSeparateCompletedHunks = false;
   let oldRemaining = 0;
   let newRemaining = 0;
 
-  const finishHunk = () => {
+  const malformedDiff = (lineNumber, category) => {
+    throw new Error(`Patch contains malformed diff content at line ${lineNumber} (${category}).`);
+  };
+  const malformedHunk = (lineNumber, category) => {
+    throw new Error(`Patch contains a malformed diff hunk at line ${lineNumber} (${category}).`);
+  };
+  const finishHunk = (lineNumber) => {
     if (inHunk && (oldRemaining !== 0 || newRemaining !== 0)) {
-      throw new Error("Patch contains a malformed diff hunk.");
+      malformedHunk(lineNumber, "incomplete hunk");
     }
     inHunk = false;
   };
@@ -452,13 +459,14 @@ function addedPatchContent(patch) {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     if (line.startsWith("diff --git ")) {
-      finishHunk();
+      finishHunk(index + 1);
       sawFile = true;
+      canSeparateCompletedHunks = false;
       continue;
     }
     if (!sawFile) {
       if (line === "" && index === lines.length - 1) continue;
-      throw new Error("Patch contains malformed diff content.");
+      malformedDiff(index + 1, "expected file header");
     }
     if (line === "GIT binary patch" || /^Binary files .+ differ$/.test(line)) {
       throw new Error("Patch contains unsupported binary changes.");
@@ -466,7 +474,7 @@ function addedPatchContent(patch) {
 
     const hunk = line.match(/^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@(?: .*)?$/);
     if (hunk) {
-      finishHunk();
+      finishHunk(index + 1);
       inHunk = true;
       oldRemaining = hunk[1] === undefined ? 1 : Number(hunk[1]);
       newRemaining = hunk[2] === undefined ? 1 : Number(hunk[2]);
@@ -485,23 +493,28 @@ function addedPatchContent(patch) {
         newRemaining -= 1;
         added.push(line.slice(1));
       } else {
-        throw new Error("Patch contains malformed diff content.");
+        malformedDiff(index + 1, "invalid hunk line");
       }
       if (oldRemaining < 0 || newRemaining < 0) {
-        throw new Error("Patch contains a malformed diff hunk.");
+        malformedHunk(index + 1, "hunk length exceeded");
       }
-      if (oldRemaining === 0 && newRemaining === 0) inHunk = false;
+      if (oldRemaining === 0 && newRemaining === 0) {
+        inHunk = false;
+        canSeparateCompletedHunks = true;
+      }
       continue;
     }
 
     if (line === "" && index === lines.length - 1) continue;
+    if (line === "" && canSeparateCompletedHunks) continue;
     if (line === "\\ No newline at end of file") continue;
     if (!PATCH_METADATA_PATTERN.test(line)) {
-      throw new Error("Patch contains malformed diff content.");
+      malformedDiff(index + 1, "invalid file metadata");
     }
+    canSeparateCompletedHunks = false;
   }
 
-  finishHunk();
+  finishHunk(lines.length);
   return added.join("\n");
 }
 
