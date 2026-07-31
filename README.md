@@ -115,6 +115,8 @@ data passes through server-rendered routes or `/api/v1`, where server-side
 authorization and PostgreSQL RLS both constrain access. JSON:API formatting is
 kept at the HTTP boundary.
 
+UI implementation follows the Tailwind-first [UI component strategy](docs/ui-component-strategy.md).
+
 Machine API-key authentication is a separate, read-only server-side path. See
 [Machine authentication safeguards](docs/machine-credentials.md) for the
 credential boundary, grants, audit events, local signing setup, and deferred
