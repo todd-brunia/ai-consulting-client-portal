@@ -47,6 +47,32 @@ idempotently.
 Automation does not approve plans, apply `approved-for-build`, mark
 `preview-ready`, merge, release, deploy, or push to `main`.
 
+## Codex usage measurement pilot
+
+Each `plan`, `revise`, and `implement` attempt that reaches Codex also starts a
+repository-owned OTLP/HTTP receiver on loopback. Its trusted code and isolated
+Codex home live in runner-temporary storage, outside the model-writable
+checkout. Prompt logging is disabled. The receiver accepts only the pinned
+completed-response token fields, keeps requests in memory, and writes a
+short-lived, allowlisted `ai-usage/v1` artifact. It never writes prompts,
+responses, reasoning, source, commands, tool output, raw telemetry,
+credentials, API/project identifiers, or pricing.
+
+A separate trusted job validates the artifact and appends one comment to the
+originating issue. The comment contains a readable summary, workflow-run link,
+and compact JSON event. Its deterministic marker derives from repository, run
+ID, run attempt, and stage, so publisher retries do not duplicate the record.
+Artifacts are retained for three days. Token classes remain separate; cached
+input and reasoning output are not added to a derived total.
+
+Measurement is observational and fail-open. Missing, malformed, or unavailable
+telemetry produces `measurement_status: unavailable` with all token counts set
+to `null`; it does not block planning or implementation publication. Events are
+not created for skipped or rejected triggers because Codex is not invoked. A
+hard workflow cancellation can prevent finalization and is an explicit pilot
+limitation; cancellation reconciliation, local interactive measurement,
+pricing, dashboards, and centralized telemetry storage remain out of scope.
+
 ## Failure recovery
 
 Failures apply `blocked` and link the workflow run without exposing model traces

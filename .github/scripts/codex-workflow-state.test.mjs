@@ -67,6 +67,29 @@ describe("workflow state", () => {
     expect(workflow).not.toMatch(/effort:.*high/);
   });
 
+  it("records fail-open, isolated usage telemetry only after Codex is invoked", () => {
+    const workflow = readFileSync(".github/workflows/codex-label-automation.yml", "utf8");
+    const generate = workflow.slice(workflow.indexOf("  generate:"), workflow.indexOf("  publish_usage:"));
+    const usagePublisher = workflow.slice(workflow.indexOf("  publish_usage:"), workflow.indexOf("  publish_plan:"));
+
+    expect(generate).toContain("Prepare isolated Codex usage telemetry");
+    expect(generate).toContain('cp .github/scripts/codex-usage-telemetry.mjs "$RUNNER_TEMP/codex-usage-telemetry.mjs"');
+    expect(generate).toContain('CODEX_HOME: ${{ runner.temp }}/codex-usage-home');
+    expect(generate).toContain("log_user_prompt = false");
+    expect(generate).toContain("http://127.0.0.1:${port}/v1/logs");
+    expect(generate).toContain("Finalize fail-open usage event");
+    expect(generate).toContain("if: always() && steps.context.outputs.action == 'run'");
+    expect(generate).toContain("Upload sanitized usage event");
+    expect(generate).toContain("retention-days: 3");
+    expect(usagePublisher).toContain("continue-on-error: true");
+    expect(usagePublisher).toContain("issues: write");
+    expect(usagePublisher).toContain("validateUsageEvent");
+    expect(usagePublisher).toContain("usageMarker");
+    expect(usagePublisher).toContain("event.workflow_run_attempt !== Number(process.env.RUN_ATTEMPT)");
+    expect(usagePublisher).toContain("comments.some((comment) => comment.body?.includes(eventMarker))");
+    expect(usagePublisher).not.toContain("OPENAI_API_KEY");
+  });
+
   it("preflights planning schema compatibility before Codex runs", () => {
     const workflow = readFileSync(".github/workflows/codex-label-automation.yml", "utf8");
     expect(workflow).toContain("Validate planning response schema compatibility");

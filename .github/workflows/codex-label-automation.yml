@@ -172,9 +172,33 @@ jobs:
           const {validateResponseSchemaCompatibility} = await import('./.github/scripts/codex-workflow-state.mjs');
           validateResponseSchemaCompatibility(JSON.parse(fs.readFileSync('.github/codex/schemas/plan.json', 'utf8')));"
 
+      - name: Prepare isolated Codex usage telemetry
+        id: usage_telemetry
+        if: steps.context.outputs.action == 'run'
+        continue-on-error: true
+        run: |
+          cp .github/scripts/codex-usage-telemetry.mjs "$RUNNER_TEMP/codex-usage-telemetry.mjs"
+          mkdir -p "$RUNNER_TEMP/codex-usage-home"
+          node "$RUNNER_TEMP/codex-usage-telemetry.mjs" receive "$RUNNER_TEMP/codex-usage-listener.json" "$RUNNER_TEMP/codex-usage-measurement.json" &
+          echo "$!" > "$RUNNER_TEMP/codex-usage-receiver.pid"
+          for attempt in {1..20}; do
+            [ -s "$RUNNER_TEMP/codex-usage-listener.json" ] && break
+            sleep 0.1
+          done
+          port="$(node --input-type=module -e "import fs from 'node:fs'; console.log(JSON.parse(fs.readFileSync(process.argv[1], 'utf8')).port)" "$RUNNER_TEMP/codex-usage-listener.json")"
+          cat > "$RUNNER_TEMP/codex-usage-home/config.toml" <<EOF
+          [otel]
+          environment = "github-actions"
+          log_user_prompt = false
+          exporter = { "otlp-http" = { endpoint = "http://127.0.0.1:${port}/v1/logs", protocol = "json" } }
+          EOF
+          echo "started_at=$(date +%s%3N)" >> "$GITHUB_OUTPUT"
+
       - name: Run Codex
         id: codex
         if: steps.context.outputs.action == 'run'
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-usage-home
         uses: openai/codex-action@b11346a6fa031e2e164ab4b7c7ea201afffd7d59 # v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -189,6 +213,43 @@ jobs:
           output-schema-file: ${{ steps.context.outputs.stage == 'implement' && '.github/codex/schemas/implementation-report.json' || '.github/codex/schemas/plan.json' }}
           codex-args: '["--ephemeral"]'
 
+      - name: Finalize fail-open usage event
+        if: always() && steps.context.outputs.action == 'run'
+        continue-on-error: true
+        env:
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ steps.context.outputs.issue_number }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          STAGE: ${{ steps.context.outputs.stage }}
+          MODEL: ${{ steps.context.outputs.stage == 'implement' && 'gpt-5.6-terra' || 'gpt-5.6-luna' }}
+          EFFORT: ${{ steps.context.outputs.stage == 'implement' && 'medium' || 'low' }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          OUTCOME: ${{ steps.codex.outcome == 'success' && 'success' || 'failure' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -f "$RUNNER_TEMP/codex-usage-receiver.pid" ]; then
+            kill -TERM "$(cat "$RUNNER_TEMP/codex-usage-receiver.pid")" || true
+            wait "$(cat "$RUNNER_TEMP/codex-usage-receiver.pid")" || true
+          fi
+          started_at="${{ steps.usage_telemetry.outputs.started_at }}"
+          duration_ms=0
+          if [ -n "$started_at" ]; then
+            duration_ms=$(( $(date +%s%3N) - started_at ))
+          fi
+          DURATION_MS="$duration_ms" node --input-type=module -e "import fs from 'node:fs'; fs.writeFileSync(process.argv[1], JSON.stringify({ repository: process.env.REPOSITORY, issueNumber: Number(process.env.ISSUE_NUMBER), workflow: process.env.WORKFLOW_NAME, stage: process.env.STAGE, model: process.env.MODEL, reasoningEffort: process.env.EFFORT, workflowRunId: Number(process.env.RUN_ID), workflowRunAttempt: Number(process.env.RUN_ATTEMPT), outcome: process.env.OUTCOME, durationMs: Number(process.env.DURATION_MS), runUrl: process.env.RUN_URL, occurredAt: new Date().toISOString() }) + '\\n')" "$RUNNER_TEMP/codex-usage-metadata.json"
+          DURATION_MS="$duration_ms" node "$RUNNER_TEMP/codex-usage-telemetry.mjs" event "$RUNNER_TEMP/codex-usage-metadata.json" "$RUNNER_TEMP/codex-usage-measurement.json" "$RUNNER_TEMP/codex-usage-event.json"
+
+      - name: Upload sanitized usage event
+        if: always() && steps.context.outputs.action == 'run'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codex-usage-${{ steps.context.outputs.issue_number }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.context.outputs.stage }}
+          path: ${{ runner.temp }}/codex-usage-event.json
+          if-no-files-found: error
+          retention-days: 3
+
       - name: Create and validate implementation patch
         if: steps.context.outputs.action == 'run' && steps.context.outputs.stage == 'implement'
         run: |
@@ -198,7 +259,7 @@ jobs:
           node --input-type=module -e "import fs from 'node:fs'; const input = JSON.parse(fs.readFileSync('codex-input.json', 'utf8')); const {validatePatch} = await import('file://${{ runner.temp }}/codex-workflow-state.mjs'); validatePatch(fs.readFileSync('codex.patch', 'utf8'), { authorization: input.authorization })"
 
       - name: Upload sanitized result
-        if: steps.context.outputs.action == 'run'
+        if: steps.context.outputs.action == 'run' && steps.codex.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: codex-result-${{ steps.context.outputs.issue_number }}-${{ steps.context.outputs.fingerprint }}
@@ -208,6 +269,70 @@ jobs:
             codex.patch
           if-no-files-found: error
           retention-days: 3
+
+  publish_usage:
+    name: Publish Codex usage record
+    needs: generate
+    if: >-
+      always() &&
+      needs.generate.outputs.action == 'run' &&
+      (needs.generate.outputs.stage == 'plan' || needs.generate.outputs.stage == 'revise' || needs.generate.outputs.stage == 'implement')
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - name: Check out trusted usage publisher code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Download sanitized usage event
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codex-usage-${{ needs.generate.outputs.issue_number }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ needs.generate.outputs.stage }}
+
+      - name: Validate and publish usage event
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ISSUE_NUMBER: ${{ needs.generate.outputs.issue_number }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          STAGE: ${{ needs.generate.outputs.stage }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const fs = require("node:fs");
+            const usage = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/codex-usage-telemetry.mjs`);
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            const event = usage.validateUsageEvent(JSON.parse(fs.readFileSync("codex-usage-event.json", "utf8")));
+            if (
+              event.issue_number !== issueNumber ||
+              event.repository !== `${context.repo.owner}/${context.repo.repo}` ||
+              event.workflow_run_id !== Number(process.env.RUN_ID) ||
+              event.workflow_run_attempt !== Number(process.env.RUN_ATTEMPT) ||
+              event.stage !== process.env.STAGE
+            ) {
+              throw new Error("Usage event does not match the trusted publisher context.");
+            }
+            const eventMarker = usage.usageMarker(event);
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+            if (comments.some((comment) => comment.body?.includes(eventMarker))) return;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: usage.renderUsageComment(event),
+            });
 
   publish_plan:
     name: Publish planning response
