@@ -110,12 +110,16 @@ function assertTextList(value, name, { min = 1, max = 12, itemMin = 1, itemMax =
   return value.map((item, index) => assertText(item, `${name}[${index}]`, { min: itemMin, max: itemMax }));
 }
 
-export function validatePlanningResult(result) {
-  if (!result || typeof result !== "object" || !PLANNING_CLASSIFICATIONS.has(result.classification)) {
-    throw new Error("Planning result has an invalid classification.");
+function assertUniqueTextList(value, name, options = {}) {
+  const items = assertTextList(value, name, options);
+  const normalized = items.map((item) => item.trim().toLowerCase());
+  if (new Set(normalized).size !== normalized.length) {
+    throw new Error(`${name} must not contain duplicate items.`);
   }
-  assertText(result.markdown, "markdown", { min: 40, max: 12_000 });
+  return items;
+}
 
+function validatePlanningClassificationFields(result) {
   if (result.classification === "focused") {
     if (result.blockingDecision !== null || result.splitReason !== null || result.children !== null) {
       throw new Error("Focused planning fields must be null.");
@@ -134,11 +138,16 @@ export function validatePlanningResult(result) {
     throw new Error("Split-required blockingDecision must be null.");
   }
   assertText(result.splitReason, "splitReason", { min: 10 });
-  if (!Array.isArray(result.children) || result.children.length < 2 || result.children.length > 10) {
+  validateSplitChildren(result.children);
+  return result;
+}
+
+function validateSplitChildren(children) {
+  if (!Array.isArray(children) || children.length < 2 || children.length > 10) {
     throw new Error("A split proposal must contain 2-10 children.");
   }
   const ids = new Set();
-  for (const [index, child] of result.children.entries()) {
+  for (const [index, child] of children.entries()) {
     if (!child || typeof child !== "object") throw new Error(`children[${index}] is invalid.`);
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(child.id ?? "") || child.id.length < 3 || child.id.length > 64) {
       throw new Error(`children[${index}].id must be stable kebab-case.`);
@@ -156,7 +165,76 @@ export function validatePlanningResult(result) {
       throw new Error(`children[${index}].suggestedLabels must be unique.`);
     }
   }
-  return result;
+}
+
+export function validatePlanningResult(result) {
+  if (!result || typeof result !== "object" || !PLANNING_CLASSIFICATIONS.has(result.classification)) {
+    throw new Error("Planning result has an invalid classification.");
+  }
+  assertText(result.markdown, "markdown", { min: 40, max: 12_000 });
+
+  return validatePlanningClassificationFields(result);
+}
+
+export function validatePlanningResultV2(result) {
+  if (!result || typeof result !== "object" || result.contractVersion !== "plan/v2") {
+    throw new Error('Planning result contractVersion must be "plan/v2".');
+  }
+  if (!PLANNING_CLASSIFICATIONS.has(result.classification)) {
+    throw new Error("Planning result has an invalid classification.");
+  }
+
+  assertText(result.objective, "objective", { min: 10, max: 500 });
+  assertText(result.executiveSummary, "executiveSummary", { min: 40, max: 4_000 });
+  assertUniqueTextList(result.keyDecisions, "keyDecisions", { min: 1, max: 12, itemMin: 5, itemMax: 500 });
+  assertUniqueTextList(result.tradeoffs, "tradeoffs", { min: 0, max: 12, itemMin: 5, itemMax: 500 });
+  assertUniqueTextList(result.risks, "risks", { min: 0, max: 12, itemMin: 5, itemMax: 500 });
+  assertUniqueTextList(result.openQuestions, "openQuestions", { min: 0, max: 12, itemMin: 5, itemMax: 500 });
+
+  if (!Array.isArray(result.fileChanges) || result.fileChanges.length < 1 || result.fileChanges.length > 50) {
+    throw new Error("fileChanges must contain 1-50 items.");
+  }
+  const paths = new Set();
+  for (const [index, fileChange] of result.fileChanges.entries()) {
+    if (!fileChange || typeof fileChange !== "object") throw new Error(`fileChanges[${index}] is invalid.`);
+    const path = assertText(fileChange.path, `fileChanges[${index}].path`, { min: 1, max: 500 });
+    assertText(fileChange.change, `fileChanges[${index}].change`, { min: 5, max: 500 });
+    if (paths.has(path)) throw new Error(`Duplicate fileChanges path: ${path}`);
+    paths.add(path);
+  }
+
+  assertUniqueTextList(result.implementationOrder, "implementationOrder", {
+    min: 1,
+    max: 20,
+    itemMin: 5,
+    itemMax: 1_000,
+  });
+  if (!Array.isArray(result.teachMe) || result.teachMe.length > 10) {
+    throw new Error("teachMe must contain 0-10 items.");
+  }
+  const concepts = new Set();
+  for (const [index, entry] of result.teachMe.entries()) {
+    if (!entry || typeof entry !== "object") throw new Error(`teachMe[${index}] is invalid.`);
+    const concept = assertText(entry.concept, `teachMe[${index}].concept`, { min: 3, max: 160 });
+    assertText(entry.whatItIs, `teachMe[${index}].whatItIs`, { min: 10, max: 1_000 });
+    assertText(entry.whyUsed, `teachMe[${index}].whyUsed`, { min: 10, max: 1_000 });
+    assertText(entry.whyPreferred, `teachMe[${index}].whyPreferred`, { min: 10, max: 1_000 });
+    const normalized = concept.trim().toLowerCase();
+    if (concepts.has(normalized)) throw new Error(`Duplicate teachMe concept: ${concept}`);
+    concepts.add(normalized);
+  }
+  const challengePoints = assertUniqueTextList(result.reviewerChallengePoints, "reviewerChallengePoints", {
+    min: 0,
+    max: 5,
+    itemMin: 10,
+    itemMax: 500,
+  });
+  if (challengePoints.some((item) => /^(?:none|n\/?a|not applicable|no (?:material )?(?:challenge|concern)s?)[.!]?$/i.test(item.trim()))) {
+    throw new Error("reviewerChallengePoints must not contain generic filler.");
+  }
+  assertText(result.machineImplementationDetails, "machineImplementationDetails", { min: 40, max: 12_000 });
+
+  return validatePlanningClassificationFields(result);
 }
 
 export function encodeSplitProposal(result, digest) {

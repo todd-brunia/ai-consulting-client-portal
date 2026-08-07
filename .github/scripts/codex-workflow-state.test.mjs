@@ -16,6 +16,7 @@ import {
   transitionFor,
   validateImplementationAuthorization,
   validatePlanningResult,
+  validatePlanningResultV2,
   validatePatch,
   validatePublicText,
   validateResponseSchemaCompatibility,
@@ -51,6 +52,27 @@ const splitResult = {
     excludedScope: ["Unrelated workflow changes."],
     suggestedLabels: ["workflow"],
   })),
+};
+const focusedV2Result = {
+  contractVersion: "plan/v2",
+  classification: "focused",
+  objective: "Introduce the structured planning contract safely.",
+  executiveSummary: "Add a dormant versioned schema and trusted validator while leaving the active planning workflow unchanged.",
+  keyDecisions: ["Use a flat, explicitly versioned planning contract."],
+  tradeoffs: [],
+  risks: [],
+  openQuestions: [],
+  fileChanges: [{
+    path: ".github/codex/schemas/plan-v2.json",
+    change: "Define the dormant structured response contract.",
+  }],
+  implementationOrder: ["Add the schema before integrating its trusted validator."],
+  teachMe: [],
+  reviewerChallengePoints: [],
+  machineImplementationDetails: "Create the side-by-side schema and validate every public structured field at runtime.",
+  blockingDecision: null,
+  splitReason: null,
+  children: null,
 };
 
 describe("workflow state", () => {
@@ -475,6 +497,107 @@ describe("workflow state", () => {
       properties: { value: { type: "string" } },
       required: [],
     })).toThrow(/must be required/);
+  });
+
+  it("defines a dormant structured v2 planning schema", () => {
+    const schema = JSON.parse(readFileSync(".github/codex/schemas/plan-v2.json", "utf8"));
+    expect(validateResponseSchemaCompatibility(schema)).toBe(schema);
+    expect(schema.required).toEqual([
+      "contractVersion",
+      "classification",
+      "objective",
+      "executiveSummary",
+      "keyDecisions",
+      "tradeoffs",
+      "risks",
+      "openQuestions",
+      "fileChanges",
+      "implementationOrder",
+      "teachMe",
+      "reviewerChallengePoints",
+      "machineImplementationDetails",
+      "blockingDecision",
+      "splitReason",
+      "children",
+    ]);
+    expect(schema.properties.contractVersion.enum).toEqual(["plan/v2"]);
+    expect(schema.properties.fileChanges.items.required).toEqual(["path", "change"]);
+    expect(schema.properties.teachMe.items.required).toEqual([
+      "concept",
+      "whatItIs",
+      "whyUsed",
+      "whyPreferred",
+    ]);
+    expect(JSON.stringify(schema)).not.toMatch(/"(?:uniqueItems|minLength|maxLength|pattern|minItems|maxItems)"/);
+  });
+
+  it("validates v2 content and classification nullability", () => {
+    expect(validatePlanningResultV2(focusedV2Result)).toBe(focusedV2Result);
+    const needsDecision = {
+      ...focusedV2Result,
+      classification: "needs-decision",
+      blockingDecision: "Choose the shared contract shape before implementation proceeds.",
+    };
+    expect(validatePlanningResultV2(needsDecision)).toBe(needsDecision);
+    expect(validatePlanningResultV2({
+      ...focusedV2Result,
+      classification: "split-required",
+      splitReason: splitResult.splitReason,
+      children: splitResult.children,
+    })).toBeTruthy();
+    expect(() => validatePlanningResultV2({ ...focusedV2Result, blockingDecision: "Unexpected decision." }))
+      .toThrow(/Focused/);
+    expect(() => validatePlanningResultV2({ ...needsDecision, children: [] })).toThrow(/split fields/);
+    expect(() => validatePlanningResultV2({
+      ...focusedV2Result,
+      classification: "split-required",
+      splitReason: splitResult.splitReason,
+      children: [splitResult.children[0]],
+    })).toThrow(/2-10/);
+  });
+
+  it("rejects missing, malformed, duplicate, filler, and unsafe v2 content", () => {
+    expect(() => validatePlanningResultV2({ ...focusedV2Result, contractVersion: "plan/v1" }))
+      .toThrow(/contractVersion/);
+    expect(() => validatePlanningResultV2({ ...focusedV2Result, objective: undefined })).toThrow(/objective/);
+    expect(() => validatePlanningResultV2({ ...focusedV2Result, executiveSummary: "too short" }))
+      .toThrow(/executiveSummary/);
+    expect(() => validatePlanningResultV2({ ...focusedV2Result, keyDecisions: [] })).toThrow(/1-12/);
+    expect(() => validatePlanningResultV2({ ...focusedV2Result, tradeoffs: Array(13).fill("A material tradeoff.") }))
+      .toThrow(/0-12/);
+    expect(() => validatePlanningResultV2({
+      ...focusedV2Result,
+      risks: ["Repeated material risk.", " repeated material risk. "],
+    })).toThrow(/duplicate/i);
+    expect(() => validatePlanningResultV2({ ...focusedV2Result, fileChanges: [] })).toThrow(/1-50/);
+    expect(() => validatePlanningResultV2({
+      ...focusedV2Result,
+      fileChanges: [focusedV2Result.fileChanges[0], focusedV2Result.fileChanges[0]],
+    })).toThrow(/Duplicate fileChanges path/);
+    expect(() => validatePlanningResultV2({
+      ...focusedV2Result,
+      implementationOrder: ["Inject <!-- codex-automation:unsafe --> marker."],
+    })).toThrow(/reserved automation marker/);
+    expect(() => validatePlanningResultV2({
+      ...focusedV2Result,
+      teachMe: [{
+        concept: "Schemas",
+        whatItIs: "A structured description of accepted response data.",
+        whyUsed: "It constrains the model response before publication.",
+        whyPreferred: "It keeps the contract explicit across repositories.",
+      }, {
+        concept: "schemas",
+        whatItIs: "A structured description of accepted response data.",
+        whyUsed: "It constrains the model response before publication.",
+        whyPreferred: "It keeps the contract explicit across repositories.",
+      }],
+    })).toThrow(/Duplicate teachMe concept/);
+    expect(() => validatePlanningResultV2({ ...focusedV2Result, reviewerChallengePoints: ["Not applicable."] }))
+      .toThrow(/generic filler/);
+    expect(() => validatePlanningResultV2({ ...focusedV2Result, reviewerChallengePoints: Array(6).fill("Challenge this choice.") }))
+      .toThrow(/0-5/);
+    expect(() => validatePlanningResultV2({ ...focusedV2Result, machineImplementationDetails: "too short" }))
+      .toThrow(/machineImplementationDetails/);
   });
 
   it("encodes a split proposal with its trusted planning fingerprint", () => {

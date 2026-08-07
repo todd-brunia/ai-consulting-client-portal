@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "classification",
+    "objective",
+    "executiveSummary",
+    "keyDecisions",
+    "tradeoffs",
+    "risks",
+    "openQuestions",
+    "fileChanges",
+    "implementationOrder",
+    "teachMe",
+    "reviewerChallengePoints",
+    "machineImplementationDetails",
+    "blockingDecision",
+    "splitReason",
+    "children"
+  ],
+  "properties": {
+    "contractVersion": {
+      "type": "string",
+      "enum": ["plan/v2"]
+    },
+    "classification": {
+      "type": "string",
+      "enum": ["focused", "needs-decision", "split-required"]
+    },
+    "objective": { "type": "string" },
+    "executiveSummary": { "type": "string" },
+    "keyDecisions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "tradeoffs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "risks": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "openQuestions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "fileChanges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "change"],
+        "properties": {
+          "path": { "type": "string" },
+          "change": { "type": "string" }
+        }
+      }
+    },
+    "implementationOrder": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "teachMe": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["concept", "whatItIs", "whyUsed", "whyPreferred"],
+        "properties": {
+          "concept": { "type": "string" },
+          "whatItIs": { "type": "string" },
+          "whyUsed": { "type": "string" },
+          "whyPreferred": { "type": "string" }
+        }
+      }
+    },
+    "reviewerChallengePoints": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "machineImplementationDetails": { "type": "string" },
+    "blockingDecision": {
+      "type": ["string", "null"]
+    },
+    "splitReason": {
+      "type": ["string", "null"]
+    },
+    "children": {
+      "type": ["array", "null"],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "outcome",
+          "acceptanceCriteria",
+          "dependencies",
+          "includedScope",
+          "excludedScope",
+          "suggestedLabels"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "outcome": { "type": "string" },
+          "acceptanceCriteria": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "dependencies": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "includedScope": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "excludedScope": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "suggestedLabels": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}
