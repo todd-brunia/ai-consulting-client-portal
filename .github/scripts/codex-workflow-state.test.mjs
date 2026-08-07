@@ -156,6 +156,46 @@ describe("workflow state", () => {
     expect(prompt).toContain("Authorization refused:");
   });
 
+  it("defines reviewer-oriented v2 planning and revision prompt contracts", () => {
+    for (const promptPath of [
+      ".github/codex/prompts/plan.md",
+      ".github/codex/prompts/revise.md",
+    ]) {
+      const prompt = readFileSync(promptPath, "utf8");
+      const normalizedPrompt = prompt.replace(/\s+/g, " ");
+      for (const field of [
+        "contractVersion",
+        "classification",
+        "objective",
+        "executiveSummary",
+        "keyDecisions",
+        "tradeoffs",
+        "risks",
+        "openQuestions",
+        "fileChanges",
+        "implementationOrder",
+        "teachMe",
+        "reviewerChallengePoints",
+        "machineImplementationDetails",
+        "blockingDecision",
+        "splitReason",
+        "children",
+      ]) {
+        expect(prompt).toContain(`\`${field}\``);
+      }
+      expect(normalizedPrompt).toMatch(/approximately 150-word/);
+      expect(normalizedPrompt).toContain("not an exact word-count requirement");
+      expect(normalizedPrompt).toContain("why obvious alternatives are not preferred");
+      expect(normalizedPrompt).toContain("no-applicable-concepts state");
+      expect(normalizedPrompt).toContain("architectural, dependency, API");
+      expect(normalizedPrompt).toContain("generic filler");
+      expect(normalizedPrompt).toContain("untrusted");
+      expect(normalizedPrompt).toContain("read-only");
+      expect(normalizedPrompt).toContain("reserved Codex automation markers");
+      expect(normalizedPrompt).toContain("legacy schema still requests `markdown`");
+    }
+  });
+
   it("uses the approved plan outcome for automation pull request titles", () => {
     const workflow = readFileSync(".github/workflows/codex-label-automation.yml", "utf8");
     const source = {
