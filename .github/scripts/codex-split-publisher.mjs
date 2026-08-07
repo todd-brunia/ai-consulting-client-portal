@@ -22,9 +22,10 @@ export function splitChecklistMarker(digest) {
 export function childLabels(parentLabels, suggestedLabels) {
   const stateLabels = new Set(STATE_LABELS);
   const suggested = new Set(suggestedLabels);
-  return parentLabels
+  const topics = parentLabels
     .map((label) => typeof label === "string" ? label : label.name)
     .filter((label) => !stateLabels.has(label) && suggested.has(label));
+  return ["needs-planning", ...new Set(topics)];
 }
 
 export function childBody({ parentNumber, child, digest }) {
@@ -57,7 +58,7 @@ ${list(child.excludedScope)}
 
 ## Planning status
 
-This child has not been approved for implementation. Review it and apply \`needs-planning\` when it is ready to enter the normal planning workflow.`;
+This child begins in \`needs-planning\` for read-only planning. It has not been approved for implementation.`;
   validatePublicText(body);
   return body;
 }
