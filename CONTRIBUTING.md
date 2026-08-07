@@ -10,7 +10,9 @@ policy.
    `needs-planning`.
 2. Label automation posts a marked proposal and moves the issue to
    `plan-ready`.
-3. Request revisions with `changes-requested`, or approve the documented scope
+3. Review the Human Review Summary first, then inspect Teach Me, Decisions the
+   Reviewer Should Challenge, and Machine Implementation Details. Request
+   revisions with `changes-requested`, or approve the complete documented scope
    with `approved-for-build`.
 4. Implement manually on a non-reserved branch, or separately authorize Codex
    by applying `approved-for-ai-build`.
@@ -19,6 +21,20 @@ policy.
 
 Automation may propose splitting an oversized issue. A human must apply
 `approved-for-split` before the GitHub-only publisher creates child issues.
+
+When planning applies `needs-decision`, record the chosen direction in a
+trusted issue comment, remove `needs-decision`, and apply `needs-planning` so a
+new structured plan can incorporate the decision. A model-generated question
+or recommendation is advisory and never selects an option or grants approval.
+
+The Human Review Summary contains the objective, executive summary, key
+decisions, tradeoffs, risks, open questions, file impacts, and ordered
+implementation sequence. Empty optional sections are intentional, not missing
+output. Teach Me explains issue-specific concepts and why the selected approach
+fits better than obvious alternatives. Reviewer challenge points identify only
+material decisions; an empty section must not be padded with generic concerns.
+Machine Implementation Details are instructions for implementation, not a
+substitute for reviewing and approving the human summary.
 
 If an automated implementation is blocked by an authorization refusal, fix the
 underlying trusted-state or authorization cause before retrying. Then remove

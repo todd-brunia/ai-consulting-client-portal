@@ -131,3 +131,9 @@ Repository changes use the same human-gated, label-driven Codex automation as
 `ai-consulting-site`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the operating
 flow and [docs/github-change-workflow.md](docs/github-change-workflow.md) for
 the security boundary and required GitHub configuration.
+
+Planning comments use a structured, human-review-first layout: Human Review
+Summary, Teach Me, Decisions the Reviewer Should Challenge, then Machine
+Implementation Details. The layout separates the concise approval surface from
+implementation instructions; only a human can resolve decisions, approve the
+documented scope, authorize AI implementation or splitting, and merge.
