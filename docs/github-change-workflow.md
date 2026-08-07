@@ -29,6 +29,43 @@ path, including explicitly invoked local interactive Codex work, but does not
 start label-triggered automation. `approved-for-ai-build` is the separate
 automation trigger.
 
+## Structured planning comments
+
+Planning and revision use the versioned `plan/v2` contract. The trusted
+publisher validates the structured result and renders these top-level sections
+in a stable order:
+
+1. **Human Review Summary** — objective, executive summary, key decisions,
+   tradeoffs, risks, open questions, one-sentence file impacts, and the ordered
+   implementation sequence. A Human Decision Required or Proposed Decomposition
+   subsection appears here when classification requires it.
+2. **Teach Me** — issue-specific concepts with what each concept is, why it is
+   used, and why it is preferred to obvious alternatives. A sentence explicitly
+   states when no concepts apply.
+3. **Decisions the Reviewer Should Challenge** — material architectural,
+   dependency, API, security, performance, compatibility, or operational
+   choices. The publisher renders an explicit empty state instead of padding.
+4. **Machine Implementation Details** — repository-grounded scope, invariants,
+   tests, and validation for the implementing agent.
+
+Review all four sections before approval. `approved-for-build` approves the
+complete marked planning record, not only the executive summary. It does not
+authorize a model to approve its own plan, make a human decision, begin a split,
+trigger AI implementation, merge, or deploy. Existing approved comments using
+the legacy marked-plan layout remain valid implementation inputs and continue
+to provide bounded pull-request titles; automation does not rewrite them.
+
+Classification controls the next human action:
+
+- `focused` moves to `plan-ready`. Request a revision or apply
+  `approved-for-build` after review.
+- `needs-decision` moves to `needs-decision`. A human records the chosen
+  direction in a trusted comment, removes `needs-decision`, and applies
+  `needs-planning` to produce a new plan. Model output never resolves the choice.
+- `split-required` moves to `split-proposed`. Review the proposed children and
+  apply `approved-for-split` only when the decomposition should be published.
+  Split approval does not approve any child for implementation.
+
 ## Automation boundary
 
 The label event validates the actor, issue state, frozen planning snapshot, and
@@ -42,7 +79,8 @@ suite, and only then creates a short-lived GitHub App token to push
 
 The split publisher does not invoke Codex after approval. It revalidates the
 structured split proposal and creates or reuses marked child issues
-idempotently.
+idempotently. Each new child requires its own planning and approval; it has no
+implementation approval merely because its parent split was approved.
 
 Automation does not approve plans, apply `approved-for-build`, mark
 `preview-ready`, merge, release, deploy, or push to `main`.
