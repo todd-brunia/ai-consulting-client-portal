@@ -60,8 +60,12 @@ Classification controls the next human action:
 - `focused` moves to `plan-ready`. Request a revision or apply
   `approved-for-build` after review.
 - `needs-decision` moves to `needs-decision`. A human records the chosen
-  direction in a trusted comment, removes `needs-decision`, and applies
-  `needs-planning` to produce a new plan. Model output never resolves the choice.
+  option ID plus any governing constraints or rationale in a trusted comment,
+  removes `needs-decision`, and applies `needs-planning` to produce a new plan.
+  The displayed options include practical effects and tradeoffs, and exactly
+  one is visibly recommended with an evidence-based rationale. That
+  recommendation is advisory: model output never records the choice, clears the
+  label, applies approval, or authorizes implementation.
 - `split-required` moves to `split-proposed`. Review the proposed children and
   apply `approved-for-split` only when the decomposition should be published.
   Split approval does not approve any child for implementation.

@@ -167,6 +167,83 @@ function validateSplitChildren(children) {
   }
 }
 
+function assertSafeDecisionText(value, name, options) {
+  const text = assertText(value, name, options);
+  const sensitiveRequest = /\b(?:paste|post|provide|publish|request|send|share|enter|supply)\b.{0,40}\b(?:credentials?|passwords?|private keys?|secrets?|tokens?)\b/gi;
+  const safeNegation = /\b(?:do not|don't|never)\s+(?:paste|post|provide|publish|request|send|share|enter|supply)\b.{0,40}\b(?:credentials?|passwords?|private keys?|secrets?|tokens?)\b/gi;
+  if (text.replace(safeNegation, "").match(sensitiveRequest)) {
+    throw new Error(`${name} must not request sensitive values in public text.`);
+  }
+  return text;
+}
+
+function validateDecisionFieldsV2(result) {
+  const decisionFields = [
+    result.decisionOptions,
+    result.recommendedOptionId,
+    result.recommendationRationale,
+  ];
+  if (result.classification !== "needs-decision") {
+    if (decisionFields.some((value) => value !== null)) {
+      throw new Error("Decision-only fields must be null unless classification is needs-decision.");
+    }
+    return;
+  }
+
+  if (!Array.isArray(result.decisionOptions) || result.decisionOptions.length < 2 || result.decisionOptions.length > 4) {
+    throw new Error("decisionOptions must contain 2-4 options for needs-decision.");
+  }
+  assertSafeDecisionText(result.blockingDecision, "blockingDecision", { min: 10, max: 2_000 });
+  const ids = new Set();
+  const labels = new Set();
+  for (const [index, option] of result.decisionOptions.entries()) {
+    if (!option || typeof option !== "object") throw new Error(`decisionOptions[${index}] is invalid.`);
+    const id = assertSafeDecisionText(option.id, `decisionOptions[${index}].id`, { min: 3, max: 64 });
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) {
+      throw new Error(`decisionOptions[${index}].id must be stable kebab-case.`);
+    }
+    const label = assertSafeDecisionText(option.label, `decisionOptions[${index}].label`, { min: 3, max: 120 });
+    const description = assertSafeDecisionText(option.description, `decisionOptions[${index}].description`, { min: 10, max: 1_000 });
+    assertUniqueTextList(option.tradeoffs, `decisionOptions[${index}].tradeoffs`, {
+      min: 1,
+      max: 6,
+      itemMin: 5,
+      itemMax: 500,
+    }).forEach((tradeoff, tradeoffIndex) => {
+      assertSafeDecisionText(tradeoff, `decisionOptions[${index}].tradeoffs[${tradeoffIndex}]`, { min: 5, max: 500 });
+      if (/^(?:none|n\/?a|not applicable|no tradeoffs?|tbd|to be determined)[.!]?$/i.test(tradeoff.trim())) {
+        throw new Error(`decisionOptions[${index}].tradeoffs must not contain generic filler.`);
+      }
+    });
+    const normalizedLabel = label.trim().toLowerCase();
+    if (ids.has(id)) throw new Error(`Duplicate decision option id: ${id}`);
+    if (labels.has(normalizedLabel)) throw new Error(`Duplicate decision option label: ${label}`);
+    if (/^(?:none|n\/?a|tbd|to be determined|option [a-d]|choice [1-4]|other)[.!]?$/i.test(label.trim()) ||
+        /^(?:none|n\/?a|not applicable|to be determined|choose this option)[.!]?$/i.test(description.trim())) {
+      throw new Error(`decisionOptions[${index}] must not contain generic filler.`);
+    }
+    ids.add(id);
+    labels.add(normalizedLabel);
+  }
+  const recommendationId = assertSafeDecisionText(result.recommendedOptionId, "recommendedOptionId", {
+    min: 3,
+    max: 64,
+  });
+  if (!ids.has(recommendationId)) {
+    throw new Error("recommendedOptionId must reference a supplied decision option.");
+  }
+  const rationale = assertSafeDecisionText(result.recommendationRationale, "recommendationRationale", {
+    min: 20,
+    max: 2_000,
+  });
+  if (/\b(?:certainly|definitely|guarantee(?:d|s)?|without (?:any )?risk|no downside)\b/i.test(rationale)) {
+    throw new Error("recommendationRationale must not claim unsupported certainty.");
+  }
+  if (/^(?:this|the) option is recommended(?: because it is (?:best|preferred))?[.!]?$/i.test(rationale.trim())) {
+    throw new Error("recommendationRationale must not contain generic filler.");
+  }
+}
+
 export function validatePlanningResult(result) {
   if (!result || typeof result !== "object" || !PLANNING_CLASSIFICATIONS.has(result.classification)) {
     throw new Error("Planning result has an invalid classification.");
@@ -233,6 +310,7 @@ export function validatePlanningResultV2(result) {
     throw new Error("reviewerChallengePoints must not contain generic filler.");
   }
   assertText(result.machineImplementationDetails, "machineImplementationDetails", { min: 40, max: 12_000 });
+  validateDecisionFieldsV2(result);
 
   return validatePlanningClassificationFields(result);
 }
@@ -340,7 +418,11 @@ export function renderPlanningResultV2(result) {
     .join("\n");
   let classificationDetails = "";
   if (result.classification === "needs-decision") {
-    classificationDetails = `\n\n### Human Decision Required\n\n${result.blockingDecision}`;
+    const options = result.decisionOptions.map((option, index) => {
+      const recommended = option.id === result.recommendedOptionId ? " — Recommended" : "";
+      return `#### ${index + 1}. ${option.label}${recommended}\n\n${option.description}\n\nTradeoffs:\n\n${renderList(option.tradeoffs)}`;
+    }).join("\n\n");
+    classificationDetails = `\n\n### Human Decision Required\n\n**Question:** ${result.blockingDecision}\n\n${options}\n\n#### Advisory Recommendation\n\n**Recommended option:** ${result.decisionOptions.find((option) => option.id === result.recommendedOptionId).label}\n\n${result.recommendationRationale}\n\nThis recommendation is advisory. The issue remains \`needs-decision\` until a human records a choice and returns it to planning.`;
   } else if (result.classification === "split-required") {
     classificationDetails = `\n\n### Proposed Decomposition\n\n${result.splitReason}\n\n${renderSplitChildren(result.children)}`;
   }

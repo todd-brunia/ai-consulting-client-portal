@@ -23,9 +23,11 @@ Automation may propose splitting an oversized issue. A human must apply
 `approved-for-split` before the GitHub-only publisher creates child issues.
 
 When planning applies `needs-decision`, record the chosen direction in a
-trusted issue comment, remove `needs-decision`, and apply `needs-planning` so a
-new structured plan can incorporate the decision. A model-generated question
-or recommendation is advisory and never selects an option or grants approval.
+trusted issue comment by naming the option ID and any constraints or rationale
+the revised plan must preserve. Then remove `needs-decision` and apply
+`needs-planning` so a new structured plan can incorporate the choice. The
+displayed recommendation is advisory and never selects an option, clears the
+decision state, or grants approval.
 
 The Human Review Summary contains the objective, executive summary, key
 decisions, tradeoffs, risks, open questions, file impacts, and ordered

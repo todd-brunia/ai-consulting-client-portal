@@ -110,6 +110,9 @@ describe("split publisher", () => {
       reviewerChallengePoints: [],
       machineImplementationDetails: "Preserve child markers, idempotent retry behavior, checklist reconciliation, and parent closure.",
       blockingDecision: null,
+      decisionOptions: null,
+      recommendedOptionId: null,
+      recommendationRationale: null,
       splitReason: result.splitReason,
       children,
     };
