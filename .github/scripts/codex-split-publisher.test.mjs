@@ -86,6 +86,41 @@ describe("split publisher", () => {
     }));
   });
 
+  it("publishes a structured v2 split without changing split behavior", async () => {
+    const structuredResult = {
+      contractVersion: "plan/v2",
+      classification: "split-required",
+      objective: "Split the parent into bounded implementation outcomes.",
+      executiveSummary: "Create independently actionable children while preserving the existing approval, marker, retry, and parent-close behavior.",
+      keyDecisions: ["Keep the existing split publication transaction unchanged."],
+      tradeoffs: [],
+      risks: [],
+      openQuestions: [],
+      fileChanges: [{ path: ".github/scripts/codex-split-publisher.mjs", change: "Accept the versioned planning result." }],
+      implementationOrder: ["Validate the structured result before publishing its children."],
+      teachMe: [],
+      reviewerChallengePoints: [],
+      machineImplementationDetails: "Preserve child markers, idempotent retry behavior, checklist reconciliation, and parent closure.",
+      blockingDecision: null,
+      splitReason: result.splitReason,
+      children,
+    };
+    const { github, issues, created } = mockGithub();
+    const confirmed = await publishSplit({
+      github,
+      owner: "todd-brunia",
+      repo: "site",
+      parent,
+      result: structuredResult,
+      digest,
+    });
+
+    expect(created).toHaveLength(2);
+    expect(confirmed.map(({ number }) => number)).toEqual([100, 101]);
+    expect(issues.createComment).toHaveBeenCalledOnce();
+    expect(issues.update).toHaveBeenCalledOnce();
+  });
+
   it("reuses a marked child on retry instead of creating a duplicate", async () => {
     const existing = [{
       number: 88,
@@ -124,4 +159,3 @@ describe("split publisher", () => {
     expect(issues.update).not.toHaveBeenCalled();
   });
 });
-

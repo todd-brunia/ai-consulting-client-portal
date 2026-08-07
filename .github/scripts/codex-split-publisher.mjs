@@ -3,7 +3,7 @@ import {
   SPLIT_CHILD_PREFIX,
   STATE_LABELS,
   transitionFor,
-  validatePlanningResult,
+  validatePlanningResultForContract,
   validatePublicText,
 } from "./codex-workflow-state.mjs";
 
@@ -104,7 +104,7 @@ async function reconcileChecklist({ github, owner, repo, parentNumber, digest, c
 }
 
 export async function publishSplit({ github, owner, repo, parent, result, digest }) {
-  validatePlanningResult(result);
+  validatePlanningResultForContract(result);
   if (result.classification !== "split-required") throw new Error("Split publication requires a split proposal.");
   const parentLabels = parent.labels.map((label) => typeof label === "string" ? label : label.name);
   if (parent.state !== "open" || !parentLabels.includes("approved-for-split")) {
@@ -161,4 +161,3 @@ export async function publishSplit({ github, owner, repo, parent, result, digest
   });
   return confirmed;
 }
-
