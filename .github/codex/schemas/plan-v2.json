@@ -17,6 +17,9 @@
     "reviewerChallengePoints",
     "machineImplementationDetails",
     "blockingDecision",
+    "decisionOptions",
+    "recommendedOptionId",
+    "recommendationRationale",
     "splitReason",
     "children"
   ],
@@ -83,6 +86,29 @@
     },
     "machineImplementationDetails": { "type": "string" },
     "blockingDecision": {
+      "type": ["string", "null"]
+    },
+    "decisionOptions": {
+      "type": ["array", "null"],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "description", "tradeoffs"],
+        "properties": {
+          "id": { "type": "string" },
+          "label": { "type": "string" },
+          "description": { "type": "string" },
+          "tradeoffs": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "recommendedOptionId": {
+      "type": ["string", "null"]
+    },
+    "recommendationRationale": {
       "type": ["string", "null"]
     },
     "splitReason": {

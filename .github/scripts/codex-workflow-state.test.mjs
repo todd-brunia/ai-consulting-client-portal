@@ -74,8 +74,29 @@ const focusedV2Result = {
   reviewerChallengePoints: [],
   machineImplementationDetails: "Create the side-by-side schema and validate every public structured field at runtime.",
   blockingDecision: null,
+  decisionOptions: null,
+  recommendedOptionId: null,
+  recommendationRationale: null,
   splitReason: null,
   children: null,
+};
+const needsDecisionV2Result = {
+  ...focusedV2Result,
+  classification: "needs-decision",
+  blockingDecision: "Choose the shared contract shape before implementation proceeds.",
+  decisionOptions: [{
+    id: "flat-contract",
+    label: "Use a flat contract",
+    description: "Add explicit top-level fields that every trusted consumer reads directly.",
+    tradeoffs: ["The response object becomes wider but remains simple to validate."],
+  }, {
+    id: "nested-contract",
+    label: "Use a nested contract",
+    description: "Group reviewer and machine fields into separate nested response objects.",
+    tradeoffs: ["Consumers gain grouping but require deeper schema and rendering paths."],
+  }],
+  recommendedOptionId: "flat-contract",
+  recommendationRationale: "The current schema and trusted renderer already use flat fields, so this option minimizes contract and consumer changes.",
 };
 
 describe("workflow state", () => {
@@ -185,6 +206,9 @@ describe("workflow state", () => {
         "reviewerChallengePoints",
         "machineImplementationDetails",
         "blockingDecision",
+        "decisionOptions",
+        "recommendedOptionId",
+        "recommendationRationale",
         "splitReason",
         "children",
       ]) {
@@ -566,7 +590,7 @@ describe("workflow state", () => {
     })).toThrow(/must be required/);
   });
 
-  it("defines a dormant structured v2 planning schema", () => {
+  it("defines the structured v2 planning schema", () => {
     const schema = JSON.parse(readFileSync(".github/codex/schemas/plan-v2.json", "utf8"));
     expect(validateResponseSchemaCompatibility(schema)).toBe(schema);
     expect(schema.required).toEqual([
@@ -584,6 +608,9 @@ describe("workflow state", () => {
       "reviewerChallengePoints",
       "machineImplementationDetails",
       "blockingDecision",
+      "decisionOptions",
+      "recommendedOptionId",
+      "recommendationRationale",
       "splitReason",
       "children",
     ]);
@@ -595,17 +622,20 @@ describe("workflow state", () => {
       "whyUsed",
       "whyPreferred",
     ]);
+    expect(schema.properties.decisionOptions.type).toEqual(["array", "null"]);
+    expect(schema.properties.decisionOptions.items.required).toEqual([
+      "id",
+      "label",
+      "description",
+      "tradeoffs",
+    ]);
     expect(JSON.stringify(schema)).not.toMatch(/"(?:uniqueItems|minLength|maxLength|pattern|minItems|maxItems)"/);
   });
 
   it("validates v2 content and classification nullability", () => {
     expect(validatePlanningResultV2(focusedV2Result)).toBe(focusedV2Result);
     expect(validatePlanningResultForContract(focusedV2Result)).toBe(focusedV2Result);
-    const needsDecision = {
-      ...focusedV2Result,
-      classification: "needs-decision",
-      blockingDecision: "Choose the shared contract shape before implementation proceeds.",
-    };
+    const needsDecision = needsDecisionV2Result;
     expect(validatePlanningResultV2(needsDecision)).toBe(needsDecision);
     expect(validatePlanningResultV2({
       ...focusedV2Result,
@@ -615,6 +645,10 @@ describe("workflow state", () => {
     })).toBeTruthy();
     expect(() => validatePlanningResultV2({ ...focusedV2Result, blockingDecision: "Unexpected decision." }))
       .toThrow(/Focused/);
+    expect(() => validatePlanningResultV2({
+      ...focusedV2Result,
+      decisionOptions: needsDecisionV2Result.decisionOptions,
+    })).toThrow(/Decision-only fields/);
     expect(() => validatePlanningResultV2({ ...needsDecision, children: [] })).toThrow(/split fields/);
     expect(() => validatePlanningResultV2({
       ...focusedV2Result,
@@ -622,6 +656,116 @@ describe("workflow state", () => {
       splitReason: splitResult.splitReason,
       children: [splitResult.children[0]],
     })).toThrow(/2-10/);
+  });
+
+  it("validates decision option boundaries, uniqueness, recommendations, and public safety", () => {
+    const fourOptions = [
+      ...needsDecisionV2Result.decisionOptions,
+      {
+        id: "versioned-contract",
+        label: "Use another version",
+        description: "Introduce a separate contract version for the decision fields.",
+        tradeoffs: ["Consumers need an additional coordinated schema migration."],
+      },
+      {
+        id: "defer-contract",
+        label: "Defer the contract",
+        description: "Keep the current question-only behavior until more evidence exists.",
+        tradeoffs: ["Reviewers continue doing manual research before choosing a direction."],
+      },
+    ];
+    expect(validatePlanningResultV2({ ...needsDecisionV2Result, decisionOptions: fourOptions })).toBeTruthy();
+    expect(validatePlanningResultV2({
+      ...needsDecisionV2Result,
+      recommendationRationale: "Do not provide secrets in public; use the repository-approved secure process for any sensitive configuration.",
+    })).toBeTruthy();
+    expect(() => validatePlanningResultV2({
+      ...needsDecisionV2Result,
+      decisionOptions: needsDecisionV2Result.decisionOptions.slice(0, 1),
+    })).toThrow(/2-4/);
+    expect(() => validatePlanningResultV2({
+      ...needsDecisionV2Result,
+      decisionOptions: [...fourOptions, {
+        ...fourOptions[0],
+        id: "fifth-contract",
+        label: "Use a fifth contract",
+      }],
+    })).toThrow(/2-4/);
+    expect(() => validatePlanningResultV2({
+      ...needsDecisionV2Result,
+      decisionOptions: [
+        needsDecisionV2Result.decisionOptions[0],
+        { ...needsDecisionV2Result.decisionOptions[1], id: "flat-contract" },
+      ],
+    })).toThrow(/Duplicate decision option id/);
+    expect(() => validatePlanningResultV2({
+      ...needsDecisionV2Result,
+      decisionOptions: [
+        needsDecisionV2Result.decisionOptions[0],
+        { ...needsDecisionV2Result.decisionOptions[1], label: " use a flat contract " },
+      ],
+    })).toThrow(/Duplicate decision option label/);
+    expect(() => validatePlanningResultV2({
+      ...needsDecisionV2Result,
+      decisionOptions: [
+        needsDecisionV2Result.decisionOptions[0],
+        { ...needsDecisionV2Result.decisionOptions[1], id: "Not Stable" },
+      ],
+    })).toThrow(/stable kebab-case/);
+    expect(() => validatePlanningResultV2({
+      ...needsDecisionV2Result,
+      decisionOptions: [
+        needsDecisionV2Result.decisionOptions[0],
+        { ...needsDecisionV2Result.decisionOptions[1], tradeoffs: [] },
+      ],
+    })).toThrow(/1-6/);
+    expect(() => validatePlanningResultV2({
+      ...needsDecisionV2Result,
+      decisionOptions: [
+        needsDecisionV2Result.decisionOptions[0],
+        { ...needsDecisionV2Result.decisionOptions[1], tradeoffs: ["None."] },
+      ],
+    })).toThrow(/generic filler/);
+    expect(() => validatePlanningResultV2({
+      ...needsDecisionV2Result,
+      recommendedOptionId: "missing-option",
+    })).toThrow(/reference a supplied/);
+    expect(() => validatePlanningResultV2({
+      ...needsDecisionV2Result,
+      recommendationRationale: null,
+    })).toThrow(/recommendationRationale/);
+    expect(() => validatePlanningResultV2({
+      ...needsDecisionV2Result,
+      recommendationRationale: "This is definitely the best choice and has no downside for the repository.",
+    })).toThrow(/unsupported certainty/);
+    expect(() => validatePlanningResultV2({
+      ...needsDecisionV2Result,
+      recommendationRationale: "This option is recommended because it is best.",
+    })).toThrow(/generic filler/);
+    expect(() => validatePlanningResultV2({
+      ...needsDecisionV2Result,
+      decisionOptions: [
+        needsDecisionV2Result.decisionOptions[0],
+        { ...needsDecisionV2Result.decisionOptions[1], label: "Option B" },
+      ],
+    })).toThrow(/generic filler/);
+    expect(() => validatePlanningResultV2({
+      ...needsDecisionV2Result,
+      decisionOptions: [
+        needsDecisionV2Result.decisionOptions[0],
+        {
+          ...needsDecisionV2Result.decisionOptions[1],
+          description: "Provide the private key in this public issue comment for validation.",
+        },
+      ],
+    })).toThrow(/sensitive values/);
+    expect(() => validatePlanningResultV2({
+      ...needsDecisionV2Result,
+      decisionOptions: [
+        needsDecisionV2Result.decisionOptions[0],
+        { ...needsDecisionV2Result.decisionOptions[1], label: "Use <!-- codex-plan-amendment -->" },
+      ],
+    })).toThrow(/reserved automation marker/);
   });
 
   it("renders v2 plans in stable human-review-first order with intentional empty states", () => {
@@ -655,8 +799,7 @@ describe("workflow state", () => {
 
   it("renders Teach Me, reviewer challenges, and classification details without padding", () => {
     const result = {
-      ...focusedV2Result,
-      classification: "needs-decision",
+      ...needsDecisionV2Result,
       teachMe: [{
         concept: "Coordinated activation",
         whatItIs: "A rollout that switches dependent contract consumers together.",
@@ -669,6 +812,11 @@ describe("workflow state", () => {
     const rendered = renderPlanningResultV2(result);
 
     expect(rendered).toContain("### Human Decision Required");
+    expect(rendered).toContain("#### 1. Use a flat contract — Recommended");
+    expect(rendered).toContain("#### 2. Use a nested contract");
+    expect(rendered).toContain("#### Advisory Recommendation");
+    expect(rendered).toContain("This recommendation is advisory.");
+    expect(rendered).toContain("remains `needs-decision`");
     expect(rendered).toContain("### Coordinated activation");
     expect(rendered).toContain("**What it is:**");
     expect(rendered).toContain("**Why it is used here:**");
@@ -681,8 +829,7 @@ describe("workflow state", () => {
     const results = [
       focusedV2Result,
       {
-        ...focusedV2Result,
-        classification: "needs-decision",
+        ...needsDecisionV2Result,
         blockingDecision: "Choose the publication boundary before implementation proceeds.",
       },
       {
