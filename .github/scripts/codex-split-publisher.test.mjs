@@ -62,14 +62,19 @@ function mockGithub({ existing = [], comments = [], failOnCreate = null } = {}) 
 }
 
 describe("split publisher", () => {
-  it("builds bounded child text and excludes state labels", () => {
-    expect(childLabels(parent.labels, children[0].suggestedLabels)).toEqual(["workflow"]);
+  it("builds bounded child text with needs-planning and excludes other state labels", () => {
+    expect(childLabels(parent.labels, children[0].suggestedLabels)).toEqual(["needs-planning", "workflow"]);
+    expect(childLabels(
+      [...parent.labels, { name: "workflow" }, { name: "plan-ready" }, { name: "in-progress" }],
+      [...children[0].suggestedLabels, "workflow", "needs-planning", "plan-ready", "in-progress"],
+    )).toEqual(["needs-planning", "workflow"]);
     expect(childBody({ parentNumber: 60, child: children[0], digest })).toContain(
       splitChildMarker(60, "schema", digest),
     );
     expect(childBody({ parentNumber: 60, child: children[0], digest })).toContain(
-      "has not been approved for implementation",
+      "begins in `needs-planning` for read-only planning",
     );
+    expect(childBody({ parentNumber: 60, child: children[0], digest })).not.toContain("apply `needs-planning`");
   });
 
   it("creates all missing children, reconciles a checklist, then closes the parent", async () => {
@@ -78,6 +83,9 @@ describe("split publisher", () => {
 
     expect(created).toHaveLength(2);
     expect(confirmed.map(({ number }) => number)).toEqual([100, 101]);
+    expect(issues.create).toHaveBeenCalledWith(expect.objectContaining({
+      labels: ["needs-planning", "workflow"],
+    }));
     expect(issues.createComment).toHaveBeenCalledOnce();
     expect(issues.update).toHaveBeenCalledWith(expect.objectContaining({
       issue_number: 60,
@@ -132,6 +140,11 @@ describe("split publisher", () => {
 
     expect(created).toHaveLength(1);
     expect(confirmed.map(({ number }) => number)).toEqual([88, 100]);
+    expect(issues.create).toHaveBeenCalledWith(expect.objectContaining({
+      title: children[1].title,
+      labels: ["needs-planning", "workflow"],
+    }));
+    expect(issues.addLabels.mock.calls.every(([input]) => input.issue_number === parent.number)).toBe(true);
     expect(issues.update).toHaveBeenCalledOnce();
   });
 
