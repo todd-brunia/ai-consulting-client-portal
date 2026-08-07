@@ -237,8 +237,14 @@ export function validatePlanningResultV2(result) {
   return validatePlanningClassificationFields(result);
 }
 
+export function validatePlanningResultForContract(result) {
+  return result?.contractVersion === "plan/v2"
+    ? validatePlanningResultV2(result)
+    : validatePlanningResult(result);
+}
+
 export function encodeSplitProposal(result, digest) {
-  validatePlanningResult(result);
+  validatePlanningResultForContract(result);
   if (result.classification !== "split-required") {
     throw new Error("Only split-required results have a split proposal.");
   }
@@ -261,7 +267,7 @@ export function decodeSplitProposal(comment) {
   if (!/^[a-f0-9]{64}$/.test(parsed.digest ?? "")) {
     throw new Error("Split proposal fingerprint is invalid.");
   }
-  validatePlanningResult(parsed.result);
+  validatePlanningResultForContract(parsed.result);
   if (parsed.result.classification !== "split-required") {
     throw new Error("Embedded proposal is not split-required.");
   }
@@ -307,6 +313,45 @@ export function renderPlanningDetails(result) {
     return `### ${index + 1}. ${child.title}\n\n${child.outcome}\n\nAcceptance criteria:\n\n${criteria}\n\nDependencies:\n\n${dependencies}\n\nIncluded scope:\n\n${included}\n\nExcluded scope:\n\n${excluded}\n\nSuggested labels: ${labels}`;
   }).join("\n\n");
   return `\n\n## Proposed decomposition\n\n${result.splitReason}\n\n${children}`;
+}
+
+function renderList(items, { ordered = false, empty = "None." } = {}) {
+  if (items.length === 0) return empty;
+  return items.map((item, index) => `${ordered ? `${index + 1}.` : "-"} ${item}`).join("\n");
+}
+
+function renderSplitChildren(children) {
+  return children.map((child, index) => {
+    const criteria = renderList(child.acceptanceCriteria);
+    const dependencies = renderList(child.dependencies);
+    const included = renderList(child.includedScope);
+    const excluded = renderList(child.excludedScope);
+    const labels = child.suggestedLabels.length > 0
+      ? child.suggestedLabels.map((item) => `\`${item}\``).join(", ")
+      : "None";
+    return `#### ${index + 1}. ${child.title}\n\n${child.outcome}\n\nAcceptance criteria:\n\n${criteria}\n\nDependencies:\n\n${dependencies}\n\nIncluded scope:\n\n${included}\n\nExcluded scope:\n\n${excluded}\n\nSuggested labels: ${labels}`;
+  }).join("\n\n");
+}
+
+export function renderPlanningResultV2(result) {
+  validatePlanningResultV2(result);
+  const fileChanges = result.fileChanges
+    .map(({ path, change }) => `- \`${path}\` — ${change}`)
+    .join("\n");
+  let classificationDetails = "";
+  if (result.classification === "needs-decision") {
+    classificationDetails = `\n\n### Human Decision Required\n\n${result.blockingDecision}`;
+  } else if (result.classification === "split-required") {
+    classificationDetails = `\n\n### Proposed Decomposition\n\n${result.splitReason}\n\n${renderSplitChildren(result.children)}`;
+  }
+  const teachMe = result.teachMe.length === 0
+    ? "No issue-specific concepts require explanation for this plan."
+    : result.teachMe.map((entry) => `### ${entry.concept}\n\n**What it is:** ${entry.whatItIs}\n\n**Why it is used here:** ${entry.whyUsed}\n\n**Why it is preferred:** ${entry.whyPreferred}`).join("\n\n");
+  const challenges = renderList(result.reviewerChallengePoints, {
+    empty: "No material decisions require an additional reviewer challenge.",
+  });
+
+  return `## Human Review Summary\n\n### Objective\n\n${result.objective}\n\n### Executive Summary\n\n${result.executiveSummary}\n\n### Key Decisions\n\n${renderList(result.keyDecisions)}\n\n### Tradeoffs\n\n${renderList(result.tradeoffs)}\n\n### Risks\n\n${renderList(result.risks)}\n\n### Open Questions\n\n${renderList(result.openQuestions)}\n\n### File Impacts\n\n${fileChanges}\n\n### Implementation Sequence\n\n${renderList(result.implementationOrder, { ordered: true })}${classificationDetails}\n\n## Teach Me\n\n${teachMe}\n\n## Decisions the Reviewer Should Challenge\n\n${challenges}\n\n## Machine Implementation Details\n\n${result.machineImplementationDetails}`;
 }
 
 export function latestPlanIndex(comments) {
@@ -420,8 +465,9 @@ function proposalOutcome(source) {
   const plan = source?.comments?.find((comment) => comment.body?.includes(PLAN_MARKER));
   if (!plan) return "";
 
-  const proposal = plan.body.match(/^## Proposal\s*\n+([\s\S]*?)(?=^##\s|\s*$)/m)?.[1] ?? "";
-  return normalizedTitleText(proposal);
+  const legacyProposal = plan.body.match(/^## Proposal\s*\n+([\s\S]*?)(?=^##\s|\s*$)/m)?.[1] ?? "";
+  const structuredObjective = plan.body.match(/^### Objective\s*\n+([\s\S]*?)(?=^#{2,4}\s|\s*$)/m)?.[1] ?? "";
+  return normalizedTitleText(legacyProposal || structuredObjective);
 }
 
 export function implementationPullRequestTitle(issueNumber, source) {

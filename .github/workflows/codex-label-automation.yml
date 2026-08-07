@@ -170,7 +170,7 @@ jobs:
           node --input-type=module -e
           "import fs from 'node:fs';
           const {validateResponseSchemaCompatibility} = await import('./.github/scripts/codex-workflow-state.mjs');
-          validateResponseSchemaCompatibility(JSON.parse(fs.readFileSync('.github/codex/schemas/plan.json', 'utf8')));"
+          validateResponseSchemaCompatibility(JSON.parse(fs.readFileSync('.github/codex/schemas/plan-v2.json', 'utf8')));"
 
       - name: Prepare isolated Codex usage telemetry
         id: usage_telemetry
@@ -210,7 +210,7 @@ jobs:
           safety-strategy: drop-sudo
           allow-users: ${{ vars.CODEX_ALLOWED_ACTORS }}
           allow-bots: false
-          output-schema-file: ${{ steps.context.outputs.stage == 'implement' && '.github/codex/schemas/implementation-report.json' || '.github/codex/schemas/plan.json' }}
+          output-schema-file: ${{ steps.context.outputs.stage == 'implement' && '.github/codex/schemas/implementation-report.json' || '.github/codex/schemas/plan-v2.json' }}
           codex-args: '["--ephemeral"]'
 
       - name: Finalize fail-open usage event
@@ -372,14 +372,14 @@ jobs:
             const helpers = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/codex-workflow-state.mjs`);
             const issueNumber = Number(process.env.ISSUE_NUMBER);
             const parsed = JSON.parse(fs.readFileSync("codex-output.json", "utf8"));
-            helpers.validatePlanningResult(parsed);
+            helpers.validatePlanningResultV2(parsed);
             const heading = process.env.STAGE === "plan"
               ? `${helpers.PLAN_MARKER}\n## Codex implementation proposal`
               : "<!-- codex-plan-amendment -->\n## Plan amendment";
             const structured = parsed.classification === "split-required"
               ? `\n${helpers.encodeSplitProposal(parsed, process.env.MARKER.match(/:([a-f0-9]{64}) -->$/)[1])}`
               : "";
-            const body = `${process.env.MARKER}${structured}\n${heading}\n\n${parsed.markdown}${helpers.renderPlanningDetails(parsed)}`;
+            const body = `${process.env.MARKER}${structured}\n${heading}\n\n${helpers.renderPlanningResultV2(parsed)}`;
             helpers.validatePublicText(body);
 
             await github.rest.issues.createComment({

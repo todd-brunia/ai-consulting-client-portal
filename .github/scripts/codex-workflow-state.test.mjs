@@ -13,10 +13,12 @@ import {
   implementationPullRequestTitle,
   marker,
   planningSnapshot,
+  renderPlanningResultV2,
   transitionFor,
   validateImplementationAuthorization,
   validatePlanningResult,
   validatePlanningResultV2,
+  validatePlanningResultForContract,
   validatePatch,
   validatePublicText,
   validateResponseSchemaCompatibility,
@@ -116,6 +118,10 @@ describe("workflow state", () => {
     const workflow = readFileSync(".github/workflows/codex-label-automation.yml", "utf8");
     expect(workflow).toContain("Validate planning response schema compatibility");
     expect(workflow).toContain("validateResponseSchemaCompatibility");
+    expect(workflow).toContain(".github/codex/schemas/plan-v2.json");
+    expect(workflow).toContain("helpers.validatePlanningResultV2(parsed)");
+    expect(workflow).toContain("helpers.renderPlanningResultV2(parsed)");
+    expect(workflow).not.toContain("${parsed.markdown}");
     expect(workflow.indexOf("Validate planning response schema compatibility")).toBeLessThan(
       workflow.indexOf("- name: Run Codex"),
     );
@@ -226,6 +232,26 @@ describe("workflow state", () => {
     expect(implementationPullRequestTitle(67, long).length).toBeLessThanOrEqual(120);
     expect(implementationPullRequestTitle(67, long)).toMatch(/…$/);
     expect(implementationPullRequestTitle(67, { comments: [] })).toBe("Implement #67: approved plan");
+  });
+
+  it("derives bounded pull request titles from structured and legacy marked plans", () => {
+    const structured = {
+      comments: [{
+        body: `${PLAN_MARKER}\n## Codex implementation proposal\n\n## Human Review Summary\n\n### Objective\n\nPublish structured plans without breaking legacy approvals.\n\n### Executive Summary\n\nDetails.`,
+      }],
+    };
+    const legacy = {
+      comments: [{
+        body: `${PLAN_MARKER}\n## Proposal\n\nKeep the legacy title source usable.\n\n## Risks\n\nNone.`,
+      }],
+    };
+
+    expect(implementationPullRequestTitle(68, structured)).toBe(
+      "Implement #68: Publish structured plans without breaking legacy approvals.",
+    );
+    expect(implementationPullRequestTitle(68, legacy)).toBe(
+      "Implement #68: Keep the legacy title source usable.",
+    );
   });
 
   it("keeps split publication GitHub-only and behind explicit approval", () => {
@@ -573,6 +599,7 @@ describe("workflow state", () => {
 
   it("validates v2 content and classification nullability", () => {
     expect(validatePlanningResultV2(focusedV2Result)).toBe(focusedV2Result);
+    expect(validatePlanningResultForContract(focusedV2Result)).toBe(focusedV2Result);
     const needsDecision = {
       ...focusedV2Result,
       classification: "needs-decision",
@@ -594,6 +621,59 @@ describe("workflow state", () => {
       splitReason: splitResult.splitReason,
       children: [splitResult.children[0]],
     })).toThrow(/2-10/);
+  });
+
+  it("renders v2 plans in stable human-review-first order with intentional empty states", () => {
+    const rendered = renderPlanningResultV2(focusedV2Result);
+    const orderedHeadings = [
+      "## Human Review Summary",
+      "## Teach Me",
+      "## Decisions the Reviewer Should Challenge",
+      "## Machine Implementation Details",
+    ];
+    for (let index = 1; index < orderedHeadings.length; index += 1) {
+      expect(rendered.indexOf(orderedHeadings[index - 1])).toBeLessThan(rendered.indexOf(orderedHeadings[index]));
+    }
+    for (const heading of [
+      "### Objective",
+      "### Executive Summary",
+      "### Key Decisions",
+      "### Tradeoffs",
+      "### Risks",
+      "### Open Questions",
+      "### File Impacts",
+      "### Implementation Sequence",
+    ]) {
+      expect(rendered).toContain(heading);
+    }
+    expect(rendered).toContain("No issue-specific concepts require explanation for this plan.");
+    expect(rendered).toContain("No material decisions require an additional reviewer challenge.");
+    expect(rendered).toContain("1. Add the schema before integrating its trusted validator.");
+    expect(rendered).not.toContain("undefined");
+  });
+
+  it("renders Teach Me, reviewer challenges, and classification details without padding", () => {
+    const result = {
+      ...focusedV2Result,
+      classification: "needs-decision",
+      teachMe: [{
+        concept: "Coordinated activation",
+        whatItIs: "A rollout that switches dependent contract consumers together.",
+        whyUsed: "It prevents a live schema and publisher mismatch during rollout.",
+        whyPreferred: "It is safer than activating partially merged contract changes.",
+      }],
+      reviewerChallengePoints: ["Challenge whether every contract consumer switches atomically."],
+      blockingDecision: "Choose whether to activate every structured-plan consumer together.",
+    };
+    const rendered = renderPlanningResultV2(result);
+
+    expect(rendered).toContain("### Human Decision Required");
+    expect(rendered).toContain("### Coordinated activation");
+    expect(rendered).toContain("**What it is:**");
+    expect(rendered).toContain("**Why it is used here:**");
+    expect(rendered).toContain("**Why it is preferred:**");
+    expect(rendered).toContain("- Challenge whether every contract consumer switches atomically.");
+    expect(rendered).not.toContain("No material decisions require an additional reviewer challenge.");
   });
 
   it("rejects missing, malformed, duplicate, filler, and unsafe v2 content", () => {
@@ -652,6 +732,17 @@ describe("workflow state", () => {
     expect(validateSplitFingerprint(approvedSplitProposal([comment]), digest)).toBeTruthy();
     expect(() => validateSplitFingerprint(approvedSplitProposal([comment]), "b".repeat(64))).toThrow(/changed/);
     expect(() => approvedSplitProposal([{ ...comment, user: { login: "todd-brunia", type: "User" } }])).toThrow(/trusted/);
+
+    const structuredSplit = {
+      ...focusedV2Result,
+      classification: "split-required",
+      splitReason: splitResult.splitReason,
+      children: splitResult.children,
+    };
+    expect(decodeSplitProposal(encodeSplitProposal(structuredSplit, digest))).toEqual({
+      digest,
+      result: structuredSplit,
+    });
   });
 
   it("authorizes the actual human split actor", () => {
