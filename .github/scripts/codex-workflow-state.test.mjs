@@ -4,10 +4,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   PLAN_MARKER,
+  SPLIT_CHILD_PREFIX,
   approvedSplitProposal,
   buildContext,
   decodeSplitProposal,
   encodeSplitProposal,
+  evaluateSplitPlanHandoff,
   evaluateTrigger,
   failureTransitionFor,
   fingerprint,
@@ -283,7 +285,7 @@ describe("workflow state", () => {
     const workflow = readFileSync(".github/workflows/codex-label-automation.yml", "utf8");
     const split = workflow.slice(
       workflow.indexOf("  publish_split:"),
-      workflow.indexOf("  report_failure:"),
+      workflow.indexOf("  plan_split_children:"),
     );
 
     expect(split).toContain("github.event.label.name == 'approved-for-split'");
@@ -295,6 +297,23 @@ describe("workflow state", () => {
     );
     expect(split).not.toContain("OPENAI_API_KEY");
     expect(split).not.toContain("openai/codex-action");
+  });
+
+  it("continues from trusted split publisher output into a plan-only reusable workflow", () => {
+    const workflow = readFileSync(".github/workflows/codex-label-automation.yml", "utf8");
+    const childWorkflow = readFileSync(".github/workflows/codex-plan-split-child.yml", "utf8");
+    expect(workflow).toContain("children: ${{ steps.publish.outputs.children }}");
+    expect(workflow).toContain("uses: ./.github/workflows/codex-plan-split-child.yml");
+    expect(workflow).toContain("stage: plan");
+    expect(childWorkflow).toContain("on:\n  workflow_call:");
+    expect(childWorkflow).not.toContain("workflow_dispatch:");
+    expect(childWorkflow).not.toMatch(/^  issues:/m);
+    expect(childWorkflow).toContain("helpers.evaluateSplitPlanHandoff");
+    expect(childWorkflow).toContain("permission-profile: :read-only");
+    expect(childWorkflow).not.toContain("approved-for-ai-build");
+    expect(childWorkflow).not.toContain("git push");
+    expect(childWorkflow).not.toContain("pulls.create");
+    expect(workflow).not.toMatch(/CODEX_ALLOWED_ACTORS[^\n]*github-actions/);
   });
 
   it("loads trusted helpers before reporting a blocked automation failure", () => {
@@ -966,6 +985,93 @@ describe("workflow state", () => {
     expect(evaluateTrigger({ ...input, actor: "other-human" })).toMatchObject({ action: "skip" });
     expect(evaluateTrigger({ ...input, actorType: "Bot" })).toMatchObject({ action: "skip" });
     expect(evaluateTrigger({ ...input, permission: "read" })).toMatchObject({ action: "skip" });
+  });
+
+  it("accepts only exact, plan-only split child handoffs and skips replays", () => {
+    const digest = "c".repeat(64);
+    const parent = {
+      number: 60,
+      state: "closed",
+      labels: [{ name: "split-parent" }],
+    };
+    const parentComments = [{
+      user: { login: "github-actions[bot]", type: "Bot" },
+      body: `${marker("plan", 60, digest)}\n${encodeSplitProposal(splitResult, digest)}`,
+    }];
+    const child = {
+      number: 101,
+      title: splitResult.children[0].title,
+      body: `${SPLIT_CHILD_PREFIX}parent-60:schema:${digest} -->\nBounded child body`,
+      state: "open",
+      labels: [{ name: "needs-planning" }],
+    };
+    const input = {
+      parent,
+      parentComments,
+      child,
+      childComments: [],
+      parentNumber: 60,
+      childId: "schema",
+      digest,
+      requestedStage: "plan",
+    };
+    const accepted = evaluateSplitPlanHandoff(input);
+    expect(accepted).toMatchObject({
+      action: "run",
+      authorization: {
+        type: "approved-split-plan-handoff",
+        parentNumber: 60,
+        childId: "schema",
+        splitFingerprint: digest,
+        stage: "plan",
+      },
+    });
+    expect(evaluateSplitPlanHandoff({
+      ...input,
+      childComments: [{ body: accepted.marker }],
+    })).toMatchObject({ action: "skip" });
+    expect(evaluateSplitPlanHandoff({
+      ...input,
+      childComments: [{ body: PLAN_MARKER }],
+    })).toMatchObject({ action: "skip", reason: expect.stringMatching(/planning marker/) });
+  });
+
+  it("blocks tampered split handoffs and skips advanced children", () => {
+    const digest = "d".repeat(64);
+    const parentComments = [{
+      user: { login: "github-actions[bot]", type: "Bot" },
+      body: `${marker("plan", 60, digest)}\n${encodeSplitProposal(splitResult, digest)}`,
+    }];
+    const base = {
+      parent: { number: 60, state: "closed", labels: [{ name: "split-parent" }] },
+      parentComments,
+      child: {
+        number: 101,
+        title: "Child",
+        body: `${SPLIT_CHILD_PREFIX}parent-60:schema:${digest} -->`,
+        state: "open",
+        labels: [{ name: "needs-planning" }],
+      },
+      childComments: [],
+      parentNumber: 60,
+      childId: "schema",
+      digest,
+      requestedStage: "plan",
+    };
+    expect(evaluateSplitPlanHandoff({ ...base, requestedStage: "implement" }))
+      .toMatchObject({ action: "block", reason: expect.stringMatching(/only the plan/) });
+    expect(evaluateSplitPlanHandoff({ ...base, childId: "publisher" }))
+      .toMatchObject({ action: "block", reason: expect.stringMatching(/exact publisher/) });
+    expect(evaluateSplitPlanHandoff({ ...base, digest: "e".repeat(64) }))
+      .toMatchObject({ action: "block" });
+    expect(evaluateSplitPlanHandoff({
+      ...base,
+      child: { ...base.child, labels: [{ name: "plan-ready" }] },
+    })).toMatchObject({ action: "skip", reason: expect.stringMatching(/advanced/) });
+    expect(evaluateSplitPlanHandoff({
+      ...base,
+      parent: { ...base.parent, state: "open", labels: [{ name: "approved-for-split" }] },
+    })).toMatchObject({ action: "block", reason: expect.stringMatching(/not completed/) });
   });
 
   it("skips a replayed implementation trigger but blocks removed approval", () => {

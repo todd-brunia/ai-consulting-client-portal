@@ -20,7 +20,11 @@ policy.
    result. Only a human merges.
 
 Automation may propose splitting an oversized issue. A human must apply
-`approved-for-split` before the GitHub-only publisher creates child issues.
+`approved-for-split` before the GitHub-only publisher creates child issues. A
+completed approved split continues directly into one plan-only execution for
+each exact publisher-confirmed child. The bounded handoff does not trust the
+workflow bot generally and grants no implementation authority. Retries skip
+children that already have a plan or have advanced beyond `needs-planning`.
 
 When planning applies `needs-decision`, record the chosen direction in a
 trusted issue comment by naming the option ID and any constraints or rationale
@@ -43,6 +47,11 @@ underlying trusted-state or authorization cause before retrying. Then remove
 `blocked` and reapply `approved-for-ai-build`. The general
 `approved-for-build` label does not trigger or retry automation, and neither
 approval gate should be bypassed or weakened.
+
+Legacy split children that predate the direct handoff require an explicit
+owner recovery checkpoint. Follow the bounded procedure in the GitHub change
+workflow document; do not recover them through bot labels, bulk dispatch, or an
+implementation trigger.
 
 ## Security boundaries
 

@@ -1,0 +1,203 @@
+name: Codex split child planning
+
+on:
+  workflow_call:
+    inputs:
+      parent_number:
+        required: true
+        type: number
+      split_fingerprint:
+        required: true
+        type: string
+      child_number:
+        required: true
+        type: number
+      child_id:
+        required: true
+        type: string
+      stage:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    name: Validate split handoff and run plan-only Codex
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      action: ${{ steps.context.outputs.action }}
+      fingerprint: ${{ steps.context.outputs.fingerprint }}
+      marker: ${{ steps.context.outputs.marker }}
+    steps:
+      - name: Check out trusted default branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Validate exact parent, fingerprint, child, and stage
+        id: context
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PARENT_NUMBER: ${{ inputs.parent_number }}
+          SPLIT_FINGERPRINT: ${{ inputs.split_fingerprint }}
+          CHILD_NUMBER: ${{ inputs.child_number }}
+          CHILD_ID: ${{ inputs.child_id }}
+          REQUESTED_STAGE: ${{ inputs.stage }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const fs = require("node:fs");
+            const helpers = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/codex-workflow-state.mjs`);
+            const parentNumber = Number(process.env.PARENT_NUMBER);
+            const childNumber = Number(process.env.CHILD_NUMBER);
+            const [{ data: parent }, { data: child }, parentComments, childComments] = await Promise.all([
+              github.rest.issues.get({ owner: context.repo.owner, repo: context.repo.repo, issue_number: parentNumber }),
+              github.rest.issues.get({ owner: context.repo.owner, repo: context.repo.repo, issue_number: childNumber }),
+              github.paginate(github.rest.issues.listComments, { owner: context.repo.owner, repo: context.repo.repo, issue_number: parentNumber, per_page: 100 }),
+              github.paginate(github.rest.issues.listComments, { owner: context.repo.owner, repo: context.repo.repo, issue_number: childNumber, per_page: 100 }),
+            ]);
+            const result = helpers.evaluateSplitPlanHandoff({
+              parent,
+              parentComments,
+              child,
+              childComments,
+              parentNumber,
+              childId: process.env.CHILD_ID,
+              digest: process.env.SPLIT_FINGERPRINT,
+              requestedStage: process.env.REQUESTED_STAGE,
+            });
+            core.setOutput("action", result.action);
+            core.setOutput("fingerprint", result.digest || "");
+            core.setOutput("marker", result.marker || "");
+            await core.summary.addHeading("Split child planning decision").addRaw(`${result.action}: ${result.reason || "plan"}`).write();
+            if (result.action === "block") {
+              core.setFailed(result.reason);
+              return;
+            }
+            if (result.action !== "run") return;
+            fs.writeFileSync("codex-input.json", JSON.stringify({
+              stage: "plan",
+              fingerprint: result.digest,
+              source: result.source,
+              authorization: result.authorization,
+            }, null, 2));
+
+      - name: Validate planning response schema compatibility
+        if: steps.context.outputs.action == 'run'
+        run: >-
+          node --input-type=module -e
+          "import fs from 'node:fs';
+          const {validateResponseSchemaCompatibility} = await import('./.github/scripts/codex-workflow-state.mjs');
+          validateResponseSchemaCompatibility(JSON.parse(fs.readFileSync('.github/codex/schemas/plan-v2.json', 'utf8')));"
+
+      - name: Run plan-only Codex
+        id: codex
+        if: steps.context.outputs.action == 'run'
+        uses: openai/codex-action@b11346a6fa031e2e164ab4b7c7ea201afffd7d59 # v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          model: gpt-5.6-luna
+          effort: low
+          prompt-file: .github/codex/prompts/plan.md
+          output-file: codex-output.json
+          permission-profile: :read-only
+          safety-strategy: drop-sudo
+          allow-users: ${{ vars.CODEX_ALLOWED_ACTORS }}
+          allow-bots: false
+          output-schema-file: .github/codex/schemas/plan-v2.json
+          codex-args: '["--ephemeral"]'
+
+      - name: Upload sanitized planning result
+        if: steps.context.outputs.action == 'run' && steps.codex.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codex-split-plan-${{ inputs.child_number }}-${{ steps.context.outputs.fingerprint }}
+          path: |
+            codex-input.json
+            codex-output.json
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    name: Publish split child planning response
+    needs: generate
+    if: needs.generate.result == 'success' && needs.generate.outputs.action == 'run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - name: Check out trusted publisher code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Download planning result
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codex-split-plan-${{ inputs.child_number }}-${{ needs.generate.outputs.fingerprint }}
+
+      - name: Revalidate handoff, post response, and advance state
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PARENT_NUMBER: ${{ inputs.parent_number }}
+          SPLIT_FINGERPRINT: ${{ inputs.split_fingerprint }}
+          CHILD_NUMBER: ${{ inputs.child_number }}
+          CHILD_ID: ${{ inputs.child_id }}
+          REQUESTED_STAGE: ${{ inputs.stage }}
+          MARKER: ${{ needs.generate.outputs.marker }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const fs = require("node:fs");
+            const helpers = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/codex-workflow-state.mjs`);
+            const parentNumber = Number(process.env.PARENT_NUMBER);
+            const childNumber = Number(process.env.CHILD_NUMBER);
+            const [{ data: parent }, { data: child }, parentComments, childComments] = await Promise.all([
+              github.rest.issues.get({ owner: context.repo.owner, repo: context.repo.repo, issue_number: parentNumber }),
+              github.rest.issues.get({ owner: context.repo.owner, repo: context.repo.repo, issue_number: childNumber }),
+              github.paginate(github.rest.issues.listComments, { owner: context.repo.owner, repo: context.repo.repo, issue_number: parentNumber, per_page: 100 }),
+              github.paginate(github.rest.issues.listComments, { owner: context.repo.owner, repo: context.repo.repo, issue_number: childNumber, per_page: 100 }),
+            ]);
+            const handoff = helpers.evaluateSplitPlanHandoff({
+              parent,
+              parentComments,
+              child,
+              childComments,
+              parentNumber,
+              childId: process.env.CHILD_ID,
+              digest: process.env.SPLIT_FINGERPRINT,
+              requestedStage: process.env.REQUESTED_STAGE,
+            });
+            if (handoff.action !== "run" || handoff.marker !== process.env.MARKER) {
+              throw new Error(`Split planning publication refused: ${handoff.reason || "handoff changed"}`);
+            }
+            const parsed = JSON.parse(fs.readFileSync("codex-output.json", "utf8"));
+            helpers.validatePlanningResultV2(parsed);
+            const structured = parsed.classification === "split-required"
+              ? `\n${helpers.encodeSplitProposal(parsed, process.env.MARKER.match(/:([a-f0-9]{64}) -->$/)[1])}`
+              : "";
+            const body = `${process.env.MARKER}${structured}\n${helpers.PLAN_MARKER}\n## Codex implementation proposal\n\n${helpers.renderPlanningResultV2(parsed)}`;
+            helpers.validatePublicText(body);
+            await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: childNumber, body });
+            const transition = helpers.transitionFor("plan", parsed.classification);
+            for (const name of transition.remove) {
+              try {
+                await github.rest.issues.removeLabel({ owner: context.repo.owner, repo: context.repo.repo, issue_number: childNumber, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            }
+            for (const name of transition.add) {
+              await github.rest.issues.addLabels({ owner: context.repo.owner, repo: context.repo.repo, issue_number: childNumber, labels: [name] });
+            }

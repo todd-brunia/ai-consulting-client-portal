@@ -81,10 +81,23 @@ separate job checks out `main`, revalidates and applies the patch, runs the full
 suite, and only then creates a short-lived GitHub App token to push
 `codex/issue-<number>` and open a draft pull request.
 
-The split publisher does not invoke Codex after approval. It revalidates the
-structured split proposal and creates or reuses marked child issues
-idempotently. Each new child requires its own planning and approval; it has no
-implementation approval merely because its parent split was approved.
+The split publisher revalidates the structured split proposal and creates or
+reuses marked child issues idempotently. After every child is confirmed and the
+parent transition completes, the same trusted workflow passes only the exact
+publisher-produced child numbers, child IDs, parent number, and approved split
+fingerprint to a plan-only reusable workflow. That workflow independently
+revalidates the closed `split-parent`, approved proposal fingerprint, exact
+child marker, open state, and `needs-planning` label before Codex runs. It has no
+dispatch or issue-event trigger and cannot select implementation or another
+privileged stage.
+
+Retries reuse existing children and skip a child that already has a marked plan
+or has advanced beyond `needs-planning`. A tampered identity or fingerprint
+fails visibly; partial child publication does not start the handoff. Ordinary
+bot-applied label events still fail the normal human actor check—
+`github-actions` is not a generally trusted planning actor. Each child still
+requires human plan review and implementation approval; split approval grants
+neither.
 
 Automation does not approve plans, apply `approved-for-build`, mark
 `preview-ready`, merge, release, deploy, or push to `main`.
@@ -137,6 +150,17 @@ general approval while requiring a fresh human automation authorization.
 Do not bypass or weaken either approval gate to recover a failed run. Fix the
 trusted validation, repository configuration, credential handling, or other
 root cause first; then use the label sequence above for the retry.
+
+### Recovery checkpoint for split children #105–#110
+
+The split-to-plan handoff is intentionally not applied retroactively. After
+this fix is merged, an owner may recover #105–#110 only after confirming that
+each issue is still open, has exactly one expected split-child marker, remains
+in `needs-planning`, has no marked planning comment, and has not acquired any
+advanced workflow-state label. Record that checkpoint in a trusted issue
+comment, then remove and reapply `needs-planning` as the owner to start the
+ordinary human-authorized plan path. Do not use a bot, bulk dispatch, or an
+implementation label, and stop for human review if any checkpoint differs.
 
 For issue #73, wait until the patch-validator fix is merged to `main`, then
 remove `blocked` and reapply `approved-for-ai-build`. Do not rerun the failed

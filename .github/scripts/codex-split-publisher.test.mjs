@@ -83,6 +83,7 @@ describe("split publisher", () => {
 
     expect(created).toHaveLength(2);
     expect(confirmed.map(({ number }) => number)).toEqual([100, 101]);
+    expect(confirmed.map(({ childId }) => childId)).toEqual(["schema", "publisher"]);
     expect(issues.create).toHaveBeenCalledWith(expect.objectContaining({
       labels: ["needs-planning", "workflow"],
     }));
@@ -143,6 +144,7 @@ describe("split publisher", () => {
 
     expect(created).toHaveLength(1);
     expect(confirmed.map(({ number }) => number)).toEqual([88, 100]);
+    expect(confirmed.map(({ childId }) => childId)).toEqual(["schema", "publisher"]);
     expect(issues.create).toHaveBeenCalledWith(expect.objectContaining({
       title: children[1].title,
       labels: ["needs-planning", "workflow"],
