@@ -134,7 +134,7 @@ export async function publishSplit({ github, owner, repo, parent, result, digest
     if (!issue.body?.includes(markers.get(child.id))) {
       throw new Error(`Child ${child.id} does not contain the expected marker.`);
     }
-    confirmed.push({ number: issue.number, title: issue.title });
+    confirmed.push({ number: issue.number, title: issue.title, childId: child.id });
   }
 
   if (confirmed.length !== result.children.length) {

@@ -522,6 +522,10 @@ jobs:
     permissions:
       contents: read
       issues: read
+    outputs:
+      children: ${{ steps.publish.outputs.children }}
+      parent_number: ${{ steps.split_context.outputs.issue_number }}
+      fingerprint: ${{ steps.split_context.outputs.fingerprint }}
     steps:
       - name: Check out trusted split publisher code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -582,6 +586,7 @@ jobs:
           private-key: ${{ secrets.CODEX_AUTOMATION_APP_PRIVATE_KEY }}
 
       - name: Create or reuse children and close confirmed parent
+        id: publish
         if: steps.split_context.outputs.action == 'run'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
@@ -602,7 +607,7 @@ jobs:
             });
             const proposal = state.approvedSplitProposal(comments);
             state.validateSplitFingerprint(proposal, process.env.FINGERPRINT);
-            await publisher.publishSplit({
+            const children = await publisher.publishSplit({
               github,
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -610,13 +615,31 @@ jobs:
               result: proposal.result,
               digest: proposal.digest,
             });
+            core.setOutput("children", JSON.stringify(children.map(({ number, childId }) => ({ number, childId }))));
+
+  plan_split_children:
+    name: Plan published split child
+    needs: publish_split
+    if: needs.publish_split.result == 'success' && needs.publish_split.outputs.children != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        child: ${{ fromJSON(needs.publish_split.outputs.children) }}
+    uses: ./.github/workflows/codex-plan-split-child.yml
+    with:
+      parent_number: ${{ fromJSON(needs.publish_split.outputs.parent_number) }}
+      split_fingerprint: ${{ needs.publish_split.outputs.fingerprint }}
+      child_number: ${{ matrix.child.number }}
+      child_id: ${{ matrix.child.childId }}
+      stage: plan
+    secrets: inherit
 
   report_failure:
     name: Report blocked automation
-    needs: [generate, publish_plan, publish_implementation, publish_split]
+    needs: [generate, publish_plan, publish_implementation, publish_split, plan_split_children]
     if: >-
       always() &&
-      (needs.generate.result == 'failure' || needs.publish_plan.result == 'failure' || needs.publish_implementation.result == 'failure' || needs.publish_split.result == 'failure')
+      (needs.generate.result == 'failure' || needs.publish_plan.result == 'failure' || needs.publish_implementation.result == 'failure' || needs.publish_split.result == 'failure' || needs.plan_split_children.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

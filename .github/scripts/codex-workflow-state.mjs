@@ -637,6 +637,77 @@ export function evaluateTrigger({
   return { action: "run", ...context };
 }
 
+export function evaluateSplitPlanHandoff({
+  parent,
+  parentComments,
+  child,
+  childComments,
+  parentNumber,
+  childId,
+  digest,
+  requestedStage,
+}) {
+  if (requestedStage !== "plan") {
+    return { action: "block", reason: "Split handoffs may request only the plan stage." };
+  }
+  if (!Number.isSafeInteger(parentNumber) || parentNumber < 1 || parent.number !== parentNumber) {
+    return { action: "block", reason: "The split parent identity is invalid." };
+  }
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(childId ?? "") || childId.length > 64) {
+    return { action: "block", reason: "The split child identity is invalid." };
+  }
+  if (!/^[a-f0-9]{64}$/.test(digest ?? "")) {
+    return { action: "block", reason: "The split fingerprint is invalid." };
+  }
+
+  try {
+    const proposal = approvedSplitProposal(parentComments);
+    validateSplitFingerprint(proposal, digest);
+    if (!proposal.result.children.some((candidate) => candidate.id === childId)) {
+      throw new Error("The child id is not present in the approved split proposal.");
+    }
+  } catch (error) {
+    return { action: "block", reason: error.message };
+  }
+
+  const parentLabels = parent.labels.map((label) => typeof label === "string" ? label : label.name);
+  if (parent.state !== "closed" || !parentLabels.includes("split-parent")) {
+    return { action: "block", reason: "The approved split has not completed." };
+  }
+  if (child.state !== "open") return { action: "skip", reason: "The child is not open." };
+
+  const expectedMarker = `${SPLIT_CHILD_PREFIX}parent-${parentNumber}:${childId}:${digest} -->`;
+  const childMarkers = child.body?.match(/<!-- codex-split-child:[^\n]* -->/g) ?? [];
+  if (childMarkers.length !== 1 || childMarkers[0] !== expectedMarker) {
+    return { action: "block", reason: "The child does not have the exact publisher-produced split marker." };
+  }
+
+  const labels = child.labels.map((label) => typeof label === "string" ? label : label.name);
+  const advancedStates = STATE_LABELS.filter((label) => label !== "needs-planning");
+  if (advancedStates.some((label) => labels.includes(label))) {
+    return { action: "skip", reason: "The child has advanced beyond needs-planning." };
+  }
+  if (!labels.includes("needs-planning")) {
+    return { action: "skip", reason: "The child no longer requests planning." };
+  }
+  if (childComments.some((comment) => comment.body?.includes(PLAN_MARKER))) {
+    return { action: "skip", reason: "The child already has a current planning marker." };
+  }
+
+  const authorization = {
+    type: "approved-split-plan-handoff",
+    parentNumber,
+    childId,
+    splitFingerprint: digest,
+    stage: "plan",
+  };
+  const context = buildContext({ issue: child, comments: childComments, stage: "plan", authorization });
+  if (childComments.some((comment) => comment.body?.includes(context.marker))) {
+    return { action: "skip", reason: "This split planning handoff was already processed." };
+  }
+  return { action: "run", ...context };
+}
+
 const PATCH_METADATA_PATTERN =
   /^(?:index [0-9a-f]+\.\.[0-9a-f]+(?: \d+)?|(?:old|new|new file|deleted file) mode \d+|similarity index \d+%|dissimilarity index \d+%|rename (?:from|to) .+|copy (?:from|to) .+|--- (?:a\/.+|\/dev\/null)|\+\+\+ (?:b\/.+|\/dev\/null))$/;
 
