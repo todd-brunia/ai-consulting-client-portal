@@ -317,14 +317,27 @@ describe("workflow state", () => {
   it("continues from trusted split publisher output into a plan-only reusable workflow", () => {
     const workflow = readFileSync(".github/workflows/codex-label-automation.yml", "utf8");
     const childWorkflow = readFileSync(".github/workflows/codex-plan-split-child.yml", "utf8");
+    const topLevel = workflow.slice(0, workflow.indexOf("jobs:"));
+    const caller = workflow.slice(
+      workflow.indexOf("  plan_split_children:"),
+      workflow.indexOf("  report_failure:"),
+    );
+    const childGenerate = childWorkflow.slice(
+      childWorkflow.indexOf("  generate:"),
+      childWorkflow.indexOf("  publish:"),
+    );
     expect(workflow).toContain("children: ${{ steps.publish.outputs.children }}");
-    expect(workflow).toContain("uses: ./.github/workflows/codex-plan-split-child.yml");
-    expect(workflow).toContain("stage: plan");
+    expect(caller).toContain("uses: ./.github/workflows/codex-plan-split-child.yml");
+    expect(caller).toContain("stage: plan");
+    expect(caller).toMatch(/permissions:\n      actions: read\n      contents: read\n      issues: write/);
+    expect(topLevel).toMatch(/permissions:\n  contents: read\n/);
+    expect(topLevel).not.toContain("issues: write");
     expect(childWorkflow).toContain("on:\n  workflow_call:");
     expect(childWorkflow).not.toContain("workflow_dispatch:");
     expect(childWorkflow).not.toMatch(/^  issues:/m);
     expect(childWorkflow).toContain("helpers.evaluateSplitPlanHandoff");
     expect(childWorkflow).toContain("permission-profile: :read-only");
+    expect(childGenerate).not.toContain("issues: write");
     expect(childWorkflow).not.toContain("approved-for-ai-build");
     expect(childWorkflow).not.toContain("git push");
     expect(childWorkflow).not.toContain("pulls.create");
