@@ -376,11 +376,11 @@ jobs:
             const heading = process.env.STAGE === "plan"
               ? `${helpers.PLAN_MARKER}\n## Codex implementation proposal`
               : "<!-- codex-plan-amendment -->\n## Plan amendment";
-            const structured = parsed.classification === "split-required"
-              ? `\n${helpers.encodeSplitProposal(parsed, process.env.MARKER.match(/:([a-f0-9]{64}) -->$/)[1])}`
-              : "";
-            const body = `${process.env.MARKER}${structured}\n${heading}\n\n${helpers.renderPlanningResultV2(parsed)}`;
-            helpers.validatePublicText(body);
+            const body = helpers.composePlanningComment({
+              automationMarker: process.env.MARKER,
+              heading,
+              result: parsed,
+            });
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -612,7 +612,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               parent,
-              result: proposal.result,
+              children: proposal.children,
               digest: proposal.digest,
             });
             core.setOutput("children", JSON.stringify(children.map(({ number, childId }) => ({ number, childId }))));

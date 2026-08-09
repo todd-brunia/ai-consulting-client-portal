@@ -49,6 +49,13 @@ named field:
   the classification nullability and split-child rules from the planning
   contract, changing them only when the trusted feedback changes the scope.
 
+Keep the complete revised review comment within a 14,000-byte UTF-8 visible
+budget. Use focused one-sentence list, file-impact, outcome, criterion, and
+scope entries where practical. For `split-required`, keep normalized child
+specifications within the 5,500-byte encoded-marker budget, normally with 2–5
+bounded children. Preserve material approved content, but remove repetition and
+stale detail instead of expanding every section when feedback changes one part.
+
 Decision options require unique stable kebab-case IDs, unique meaningful
 labels, practical effects, and issue-specific tradeoffs without generic filler,
 invented requirements, or unsupported certainty. A recommendation is advisory:

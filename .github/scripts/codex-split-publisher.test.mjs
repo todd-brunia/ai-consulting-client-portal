@@ -79,7 +79,7 @@ describe("split publisher", () => {
 
   it("creates all missing children, reconciles a checklist, then closes the parent", async () => {
     const { github, issues, created } = mockGithub();
-    const confirmed = await publishSplit({ github, owner: "todd-brunia", repo: "site", parent, result, digest });
+    const confirmed = await publishSplit({ github, owner: "todd-brunia", repo: "site", parent, children, digest });
 
     expect(created).toHaveLength(2);
     expect(confirmed.map(({ number }) => number)).toEqual([100, 101]);
@@ -123,7 +123,7 @@ describe("split publisher", () => {
       owner: "todd-brunia",
       repo: "site",
       parent,
-      result: structuredResult,
+      children: structuredResult.children,
       digest,
     });
 
@@ -140,7 +140,7 @@ describe("split publisher", () => {
       body: childBody({ parentNumber: 60, child: children[0], digest }),
     }];
     const { github, issues, created } = mockGithub({ existing });
-    const confirmed = await publishSplit({ github, owner: "todd-brunia", repo: "site", parent, result, digest });
+    const confirmed = await publishSplit({ github, owner: "todd-brunia", repo: "site", parent, children, digest });
 
     expect(created).toHaveLength(1);
     expect(confirmed.map(({ number }) => number)).toEqual([88, 100]);
@@ -155,7 +155,7 @@ describe("split publisher", () => {
 
   it("leaves the parent open when child creation partially fails", async () => {
     const { github, issues, created } = mockGithub({ failOnCreate: children[1].title });
-    await expect(publishSplit({ github, owner: "todd-brunia", repo: "site", parent, result, digest }))
+    await expect(publishSplit({ github, owner: "todd-brunia", repo: "site", parent, children, digest }))
       .rejects.toThrow(/simulated/);
 
     expect(created).toHaveLength(1);
@@ -171,7 +171,7 @@ describe("split publisher", () => {
         { number: 89, title: children[0].title, body },
       ],
     });
-    await expect(publishSplit({ github, owner: "todd-brunia", repo: "site", parent, result, digest }))
+    await expect(publishSplit({ github, owner: "todd-brunia", repo: "site", parent, children, digest }))
       .rejects.toThrow(/Multiple issues/);
     expect(issues.create).not.toHaveBeenCalled();
     expect(issues.update).not.toHaveBeenCalled();

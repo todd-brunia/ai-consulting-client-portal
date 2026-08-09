@@ -3,10 +3,14 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+  PLANNING_COMMENT_BUDGETS,
   PLAN_MARKER,
+  SPLIT_ENVELOPE_VERSION,
+  SPLIT_PROPOSAL_PREFIX,
   SPLIT_CHILD_PREFIX,
   approvedSplitProposal,
   buildContext,
+  composePlanningComment,
   decodeSplitProposal,
   encodeSplitProposal,
   evaluateSplitPlanHandoff,
@@ -23,6 +27,7 @@ import {
   validatePlanningResultV2,
   validatePlanningResultForContract,
   validatePatch,
+  validatePlanningCommentComponent,
   validatePublicText,
   validateResponseSchemaCompatibility,
   validateSplitFingerprint,
@@ -82,6 +87,11 @@ const focusedV2Result = {
   splitReason: null,
   children: null,
 };
+
+function legacySplitMarker(result, digest) {
+  const payload = Buffer.from(JSON.stringify({ digest, result }), "utf8").toString("base64url");
+  return `${SPLIT_PROPOSAL_PREFIX}${payload} -->`;
+}
 const needsDecisionV2Result = {
   ...focusedV2Result,
   classification: "needs-decision",
@@ -144,7 +154,7 @@ describe("workflow state", () => {
     expect(workflow).toContain("validateResponseSchemaCompatibility");
     expect(workflow).toContain(".github/codex/schemas/plan-v2.json");
     expect(workflow).toContain("helpers.validatePlanningResultV2(parsed)");
-    expect(workflow).toContain("helpers.renderPlanningResultV2(parsed)");
+    expect(workflow).toContain("helpers.composePlanningComment");
     expect(workflow).not.toContain("${parsed.markdown}");
     expect(workflow.indexOf("Validate planning response schema compatibility")).toBeLessThan(
       workflow.indexOf("- name: Run Codex"),
@@ -943,12 +953,16 @@ describe("workflow state", () => {
   it("encodes a split proposal with its trusted planning fingerprint", () => {
     const digest = "a".repeat(64);
     const markerText = encodeSplitProposal(splitResult, digest);
-    expect(decodeSplitProposal(markerText)).toEqual({ digest, result: splitResult });
+    expect(decodeSplitProposal(markerText)).toEqual({ digest, children: splitResult.children });
+    const encoded = markerText.slice(SPLIT_PROPOSAL_PREFIX.length, -4);
+    const envelope = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    expect(envelope).toEqual({ version: SPLIT_ENVELOPE_VERSION, digest, children: splitResult.children });
+    expect(envelope).not.toHaveProperty("result");
     const comment = {
       user: { login: "github-actions[bot]", type: "Bot" },
       body: `${marker("plan", 19, digest)}\n${markerText}`,
     };
-    expect(approvedSplitProposal([comment])).toEqual({ digest, result: splitResult });
+    expect(approvedSplitProposal([comment])).toEqual({ digest, children: splitResult.children });
     expect(validateSplitFingerprint(approvedSplitProposal([comment]), digest)).toBeTruthy();
     expect(() => validateSplitFingerprint(approvedSplitProposal([comment]), "b".repeat(64))).toThrow(/changed/);
     expect(() => approvedSplitProposal([{ ...comment, user: { login: "todd-brunia", type: "User" } }])).toThrow(/trusted/);
@@ -961,8 +975,115 @@ describe("workflow state", () => {
     };
     expect(decodeSplitProposal(encodeSplitProposal(structuredSplit, digest))).toEqual({
       digest,
-      result: structuredSplit,
+      children: structuredSplit.children,
     });
+  });
+
+  it("decodes legacy full-result markers during the compatibility window", () => {
+    const digest = "c".repeat(64);
+    expect(decodeSplitProposal(legacySplitMarker(splitResult, digest))).toEqual({
+      digest,
+      children: splitResult.children,
+    });
+  });
+
+  it("fails closed for malformed, ambiguous, or unsupported compact envelopes", () => {
+    const digest = "d".repeat(64);
+    const encode = (value) => `${SPLIT_PROPOSAL_PREFIX}${Buffer.from(JSON.stringify(value)).toString("base64url")} -->`;
+    expect(() => decodeSplitProposal(`${encodeSplitProposal(splitResult, digest)}\n${encodeSplitProposal(splitResult, digest)}`))
+      .toThrow(/Multiple/);
+    expect(() => decodeSplitProposal(`${SPLIT_PROPOSAL_PREFIX}not+base64 -->`)).toThrow(/malformed/);
+    expect(() => decodeSplitProposal(encode({ version: "split/v99", digest, children: splitResult.children })))
+      .toThrow(/version/);
+    expect(() => decodeSplitProposal(encode({ version: SPLIT_ENVELOPE_VERSION, digest, children: splitResult.children, extra: true })))
+      .toThrow(/unexpected or missing/);
+    expect(() => decodeSplitProposal(encode({
+      version: SPLIT_ENVELOPE_VERSION,
+      digest,
+      children: [{ ...splitResult.children[0], outcome: "Unsafe <!-- codex-split-child:x --> marker." }, splitResult.children[1]],
+    }))).toThrow(/reserved/);
+  });
+
+  it("measures UTF-8 component boundaries and reports only safe counts", () => {
+    expect(validatePlanningCommentComponent("visible Markdown", "é", 2)).toBe(2);
+    expect(() => validatePlanningCommentComponent("visible Markdown", "éé", 3))
+      .toThrow("Planning comment visible Markdown is 4 bytes; limit is 3 bytes.");
+    expect(() => validatePlanningCommentComponent("machine payload", "secret model text", 1))
+      .toThrow("Planning comment machine payload is 17 bytes; limit is 1 bytes.");
+  });
+
+  it.each(Object.entries(PLANNING_COMMENT_BUDGETS))(
+    "enforces the %s byte boundary immediately below, at, and above its limit",
+    (_name, limit) => {
+      expect(validatePlanningCommentComponent("boundary", "x".repeat(limit - 1), limit)).toBe(limit - 1);
+      expect(validatePlanningCommentComponent("boundary", "x".repeat(limit), limit)).toBe(limit);
+      expect(() => validatePlanningCommentComponent("boundary", "x".repeat(limit + 1), limit)).toThrow(/limit/);
+    },
+  );
+
+  it("composes compact split comments within separate and combined budgets", () => {
+    const digest = "e".repeat(64);
+    const result = {
+      ...focusedV2Result,
+      classification: "split-required",
+      splitReason: splitResult.splitReason,
+      children: splitResult.children,
+    };
+    const body = composePlanningComment({
+      automationMarker: marker("plan", 115, digest),
+      heading: `${PLAN_MARKER}\n## Codex implementation proposal`,
+      result,
+    });
+    const proposal = body.match(/<!-- codex-split-proposal:[^\n]+ -->/u)?.[0];
+    expect(Buffer.byteLength(body)).toBeLessThanOrEqual(PLANNING_COMMENT_BUDGETS.combinedBytes);
+    expect(Buffer.byteLength(proposal)).toBeLessThanOrEqual(PLANNING_COMMENT_BUDGETS.machineBytes);
+    expect(decodeSplitProposal(body)).toEqual({ digest, children: splitResult.children });
+  });
+
+  it("publishes the maximum supported child count with a compact envelope", () => {
+    const digest = "f".repeat(64);
+    const children = Array.from({ length: 10 }, (_, index) => ({
+      ...splitResult.children[0],
+      id: `child-${index}`,
+      title: `Implement bounded child ${index}`,
+      outcome: `Deliver independently testable child outcome ${index}.`,
+    }));
+    const result = {
+      ...focusedV2Result,
+      classification: "split-required",
+      splitReason: splitResult.splitReason,
+      children,
+    };
+    const body = composePlanningComment({
+      automationMarker: marker("plan", 119, digest),
+      heading: `${PLAN_MARKER}\n## Codex implementation proposal`,
+      result,
+    });
+    expect(Buffer.byteLength(body)).toBeLessThanOrEqual(PLANNING_COMMENT_BUDGETS.combinedBytes);
+    expect(decodeSplitProposal(body)).toEqual({ digest, children });
+  });
+
+  it("reproduces the full-result duplication failure and fits the compact representation", () => {
+    const digest = "1".repeat(64);
+    const result = {
+      ...focusedV2Result,
+      classification: "split-required",
+      executiveSummary: "Summary detail. ".repeat(180),
+      implementationOrder: ["Implementation detail. ".repeat(40)],
+      machineImplementationDetails: "Repository-specific implementation detail. ".repeat(140),
+      splitReason: splitResult.splitReason,
+      children: splitResult.children,
+    };
+    const automationMarker = marker("plan", 117, digest);
+    const visible = `${PLAN_MARKER}\n## Codex implementation proposal\n\n${renderPlanningResultV2(result)}`;
+    const legacyBody = `${automationMarker}\n${legacySplitMarker(result, digest)}\n${visible}`;
+    expect(Buffer.byteLength(legacyBody)).toBeGreaterThan(PLANNING_COMMENT_BUDGETS.combinedBytes);
+    const compactBody = composePlanningComment({
+      automationMarker,
+      heading: `${PLAN_MARKER}\n## Codex implementation proposal`,
+      result,
+    });
+    expect(Buffer.byteLength(compactBody)).toBeLessThanOrEqual(PLANNING_COMMENT_BUDGETS.combinedBytes);
   });
 
   it("authorizes the actual human split actor", () => {

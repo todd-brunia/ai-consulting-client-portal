@@ -77,6 +77,17 @@ acceptance criteria, explicit dependencies (`None` when there are none),
 included and excluded scope, and suggested non-state labels. Do not claim that
 any child is approved or ready for implementation.
 
+Keep the rendered review comment within a 14,000-byte UTF-8 visible-text
+budget. Keep each section concise: executive summary near 150 words, list items
+to one focused sentence where practical, file impacts to one sentence, and
+machine implementation details to the repository-specific instructions needed
+to implement and validate the plan. For `split-required`, the normalized child
+specifications must also fit a 5,500-byte encoded marker: prefer 2–5 children,
+short stable IDs and titles, one-sentence outcomes and scope items, and only
+independently testable criteria and real dependencies. Do not omit required
+evidence merely to meet a budget; classify or split according to the structural
+rules above.
+
 Spend text on issue-specific scope, the main design decision, acceptance
 criteria, validation, material risks, and decisions the owner must make. Omit
 generic advice and sections with no useful issue-specific content. Include
