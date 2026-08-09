@@ -1,10 +1,19 @@
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 export const USAGE_SCHEMA_VERSION = "ai-usage/v1";
 export const USAGE_MARKER_PREFIX = "<!-- codex-usage:v1:";
+export const TERMINAL_RESULT_SCHEMA_VERSION = "codex-usage-terminal/v1";
+
+export const UNAVAILABLE_REASONS = new Set([
+  "finalization_timeout",
+  "invalid_terminal_result",
+  "no_completed_response",
+  "receiver_start_failed",
+  "rejected_telemetry",
+]);
 
 const MAX_REQUEST_BYTES = 128 * 1024;
 const TOKEN_FIELDS = [
@@ -115,6 +124,59 @@ export function collectUsageFromOtlp(payload) {
   };
 }
 
+function mergeMeasurements(current, next) {
+  if (!current) return next;
+  if (current.model !== next.model) throw new Error("Codex response events disagree on the model.");
+  return {
+    model: current.model,
+    usage: Object.fromEntries(TOKEN_FIELDS.map((field) => {
+      const values = [current.usage[field], next.usage[field]].filter((value) => value !== null);
+      return [field, values.length === 0 ? null : values.reduce((total, value) => total + value, 0)];
+    })),
+  };
+}
+
+function unavailableTerminalResult(reason) {
+  return {
+    schema_version: TERMINAL_RESULT_SCHEMA_VERSION,
+    status: "unavailable",
+    reason,
+    measurement: null,
+  };
+}
+
+function capturedTerminalResult(measurement) {
+  return {
+    schema_version: TERMINAL_RESULT_SCHEMA_VERSION,
+    status: "captured",
+    reason: null,
+    measurement,
+  };
+}
+
+export function validateTerminalResult(result) {
+  const expected = new Set(["schema_version", "status", "reason", "measurement"]);
+  if (!isPlainObject(result) || Object.keys(result).length !== expected.size || Object.keys(result).some((key) => !expected.has(key))) {
+    throw new Error("Terminal result must contain only the allowlisted fields.");
+  }
+  if (result.schema_version !== TERMINAL_RESULT_SCHEMA_VERSION) throw new Error("Terminal result schema is invalid.");
+  if (result.status === "unavailable") {
+    if (!UNAVAILABLE_REASONS.has(result.reason) || result.measurement !== null) throw new Error("Unavailable terminal result is invalid.");
+    return result;
+  }
+  if (result.status !== "captured" || result.reason !== null || !isPlainObject(result.measurement)) {
+    throw new Error("Captured terminal result is invalid.");
+  }
+  if (typeof result.measurement.model !== "string" || result.measurement.model.length < 1 || !isPlainObject(result.measurement.usage)) {
+    throw new Error("Captured terminal measurement is invalid.");
+  }
+  for (const field of TOKEN_FIELDS) nullableToken(result.measurement.usage[field], field);
+  if (Object.keys(result.measurement.usage).length !== TOKEN_FIELDS.length || Object.keys(result.measurement.usage).some((field) => !TOKEN_FIELDS.includes(field))) {
+    throw new Error("Captured terminal usage contains unsupported fields.");
+  }
+  return result;
+}
+
 export function usageEventId({ repository, workflowRunId, workflowRunAttempt, stage }) {
   return createHash("sha256")
     .update(stableJson({ repository, workflowRunId, workflowRunAttempt, stage }))
@@ -125,13 +187,14 @@ export function usageMarker(event) {
   return `${USAGE_MARKER_PREFIX}${event.event_id} -->`;
 }
 
-export function buildUsageEvent(metadata, measurement = null) {
-  const captured = isPlainObject(measurement) && isPlainObject(measurement.usage) &&
-    TOKEN_FIELDS.every((field) => measurement.usage[field] === null || (
-      Number.isSafeInteger(measurement.usage[field]) && measurement.usage[field] >= 0
-    ))
-    ? measurement
-    : null;
+export function buildUsageEvent(metadata, terminalResult = unavailableTerminalResult("receiver_start_failed")) {
+  let terminal;
+  try {
+    terminal = validateTerminalResult(terminalResult);
+  } catch {
+    terminal = unavailableTerminalResult("invalid_terminal_result");
+  }
+  const captured = terminal.status === "captured" ? terminal.measurement : null;
   const event = {
     schema_version: USAGE_SCHEMA_VERSION,
     event_id: usageEventId(metadata),
@@ -148,6 +211,7 @@ export function buildUsageEvent(metadata, measurement = null) {
     workflow_run_attempt: metadata.workflowRunAttempt,
     outcome: metadata.outcome,
     measurement_status: captured ? "captured" : "unavailable",
+    measurement_reason: captured ? null : terminal.reason,
     input_tokens: captured?.usage.input_tokens ?? null,
     cached_input_tokens: captured?.usage.cached_input_tokens ?? null,
     output_tokens: captured?.usage.output_tokens ?? null,
@@ -161,7 +225,7 @@ export function buildUsageEvent(metadata, measurement = null) {
 export function validateUsageEvent(event) {
   const expected = new Set([
     "schema_version", "event_id", "occurred_at", "source", "provider", "repository", "issue_number", "workflow",
-    "stage", "model", "reasoning_effort", "workflow_run_id", "workflow_run_attempt", "outcome", "measurement_status",
+    "stage", "model", "reasoning_effort", "workflow_run_id", "workflow_run_attempt", "outcome", "measurement_status", "measurement_reason",
     ...TOKEN_FIELDS, "duration_ms", "run_url",
   ]);
   if (!isPlainObject(event) || Object.keys(event).length !== expected.size || Object.keys(event).some((key) => !expected.has(key))) {
@@ -188,7 +252,13 @@ export function validateUsageEvent(event) {
   })) throw new Error("Usage event marker identity is invalid.");
   if (!new Set(["success", "failure"]).has(event.outcome) || !new Set(["captured", "unavailable"]).has(event.measurement_status)) throw new Error("Usage event status is invalid.");
   for (const field of TOKEN_FIELDS) nullableToken(event[field], field);
-  if (event.measurement_status === "unavailable" && TOKEN_FIELDS.some((field) => event[field] !== null)) throw new Error("Unavailable usage events must not contain token counts.");
+  if (event.measurement_status === "unavailable") {
+    if (!UNAVAILABLE_REASONS.has(event.measurement_reason) || TOKEN_FIELDS.some((field) => event[field] !== null)) {
+      throw new Error("Unavailable usage events must contain one safe reason and no token counts.");
+    }
+  } else if (event.measurement_reason !== null) {
+    throw new Error("Captured usage events must not contain an unavailable reason.");
+  }
   if (!Number.isSafeInteger(event.duration_ms) || event.duration_ms < 0) throw new Error("Usage event duration is invalid.");
   if (typeof event.run_url !== "string" || !/^https:\/\/[^\s]+\/[^\s]+\/actions\/runs\/\d+$/.test(event.run_url)) throw new Error("Usage event run URL is invalid.");
   return event;
@@ -198,7 +268,7 @@ export function renderUsageComment(event) {
   validateUsageEvent(event);
   const tokens = TOKEN_FIELDS.map((field) => `${field}: ${event[field] ?? "unavailable"}`).join("; ");
   return `${usageMarker(event)}\n## Codex usage record\n\n` +
-    `Stage: \`${event.stage}\` · Model: \`${event.model}\` · Effort: \`${event.reasoning_effort}\` · Outcome: \`${event.outcome}\` · Measurement: \`${event.measurement_status}\`\n\n` +
+    `Stage: \`${event.stage}\` · Model: \`${event.model}\` · Effort: \`${event.reasoning_effort}\` · Outcome: \`${event.outcome}\` · Measurement: \`${event.measurement_status}\`${event.measurement_reason ? ` (\`${event.measurement_reason}\`)` : ""}\n\n` +
     `Duration: ${event.duration_ms} ms · [Workflow run](${event.run_url})\n\n` +
     `Token counts — ${tokens}\n\n` +
     `\`\`\`json\n${JSON.stringify(event)}\n\`\`\``;
@@ -217,14 +287,40 @@ function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value)}\n`, { encoding: "utf8", mode: 0o600 });
 }
 
+function writeJsonAtomic(path, value) {
+  mkdirSync(dirname(path), { recursive: true });
+  const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(temporaryPath, `${JSON.stringify(value)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
+  renameSync(temporaryPath, path);
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 export function startUsageReceiver({ host = "127.0.0.1", port = 0 } = {}) {
   let measurement = null;
   let invalid = false;
+  let inFlight = 0;
+  const drainWaiters = [];
+  const finishRequest = () => {
+    inFlight -= 1;
+    if (inFlight === 0) drainWaiters.splice(0).forEach((resolve) => resolve());
+  };
   const server = createServer((request, response) => {
     if (request.method !== "POST" || !["/", "/v1/logs"].includes(request.url)) {
       response.writeHead(404).end();
       return;
     }
+    inFlight += 1;
+    let settled = false;
+    const settleRequest = () => {
+      if (settled) return;
+      settled = true;
+      finishRequest();
+    };
+    request.once("aborted", settleRequest);
+    request.once("error", settleRequest);
     let size = 0;
     const chunks = [];
     request.on("data", (chunk) => {
@@ -235,18 +331,18 @@ export function startUsageReceiver({ host = "127.0.0.1", port = 0 } = {}) {
       if (size > MAX_REQUEST_BYTES) {
         invalid = true;
         response.writeHead(413).end();
+        settleRequest();
         return;
       }
       try {
         const captured = collectUsageFromOtlp(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-        if (captured) {
-          if (measurement) throw new Error("A usage measurement was already captured.");
-          measurement = captured;
-        }
+        if (captured) measurement = mergeMeasurements(measurement, captured);
         response.writeHead(200, { "content-type": "application/json" }).end("{}");
       } catch {
         invalid = true;
         response.writeHead(400).end();
+      } finally {
+        settleRequest();
       }
     });
   });
@@ -256,22 +352,90 @@ export function startUsageReceiver({ host = "127.0.0.1", port = 0 } = {}) {
       server.off("error", reject);
       resolve({
         port: server.address().port,
-        close: () => new Promise((done) => server.close(() => done(invalid ? null : measurement))),
+        close: async () => {
+          const serverClosed = new Promise((done) => server.close(done));
+          if (inFlight > 0) await new Promise((done) => drainWaiters.push(done));
+          await serverClosed;
+          if (invalid) return unavailableTerminalResult("rejected_telemetry");
+          if (!measurement) return unavailableTerminalResult("no_completed_response");
+          return capturedTerminalResult(measurement);
+        },
       });
     });
   });
 }
 
-async function receiveCommand(listenerPath, measurementPath) {
+async function receiveCommand(listenerPath, terminalResultPath, stopPath) {
   const receiver = await startUsageReceiver();
-  writeJson(listenerPath, { port: receiver.port });
+  writeJsonAtomic(listenerPath, { port: receiver.port });
+  let stopping = null;
   const stop = async () => {
-    const measurement = await receiver.close();
-    writeJson(measurementPath, measurement);
-    process.exit(0);
+    if (!stopping) {
+      stopping = receiver.close().then((terminalResult) => {
+        writeJsonAtomic(terminalResultPath, terminalResult);
+        process.exit(0);
+      });
+    }
+    return stopping;
   };
-  process.once("SIGTERM", stop);
-  process.once("SIGINT", stop);
+  const stopPoller = setInterval(() => {
+    if (readJson(stopPath)?.schema_version === TERMINAL_RESULT_SCHEMA_VERSION) {
+      clearInterval(stopPoller);
+      stop().catch(() => process.exitCode = 1);
+    }
+  }, 25);
+  process.once("SIGTERM", () => stop().catch(() => process.exitCode = 1));
+  process.once("SIGINT", () => stop().catch(() => process.exitCode = 1));
+}
+
+function writeStopRequest(stopPath) {
+  try {
+    writeFileSync(stopPath, `${JSON.stringify({ schema_version: TERMINAL_RESULT_SCHEMA_VERSION })}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+  } catch (error) {
+    if (error?.code !== "EEXIST") throw error;
+  }
+}
+
+export async function finalizeUsageReceiver({ listenerPath, stopPath, terminalResultPath, outputPath, timeoutMs = 5000, pollMs = 25 }) {
+  const existing = readJson(outputPath);
+  if (existing) {
+    try {
+      return validateTerminalResult(existing);
+    } catch {
+      // Replace an invalid prior output with a safe terminal result.
+    }
+  }
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || !Number.isSafeInteger(pollMs) || pollMs < 1) {
+    throw new Error("Finalization timing is invalid.");
+  }
+  if (!Number.isSafeInteger(readJson(listenerPath)?.port)) {
+    const result = unavailableTerminalResult("receiver_start_failed");
+    writeJsonAtomic(outputPath, result);
+    return result;
+  }
+  writeStopRequest(stopPath);
+  const deadline = performance.now() + timeoutMs;
+  while (performance.now() < deadline) {
+    const terminal = readJson(terminalResultPath);
+    if (terminal) {
+      let result;
+      try {
+        result = validateTerminalResult(terminal);
+      } catch {
+        result = unavailableTerminalResult("invalid_terminal_result");
+      }
+      writeJsonAtomic(outputPath, result);
+      return result;
+    }
+    await delay(Math.min(pollMs, Math.max(1, deadline - performance.now())));
+  }
+  const result = unavailableTerminalResult("finalization_timeout");
+  writeJsonAtomic(outputPath, result);
+  return result;
 }
 
 function eventCommand(metadataPath, measurementPath, outputPath) {
@@ -284,8 +448,16 @@ function eventCommand(metadataPath, measurementPath, outputPath) {
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
   const [command, ...args] = process.argv.slice(2);
-  if (command === "receive" && args.length === 2) {
-    receiveCommand(args[0], args[1]).catch(() => process.exit(1));
+  if (command === "receive" && args.length === 3) {
+    receiveCommand(args[0], args[1], args[2]).catch(() => process.exit(1));
+  } else if (command === "finalize" && (args.length === 4 || args.length === 5)) {
+    finalizeUsageReceiver({
+      listenerPath: args[0],
+      stopPath: args[1],
+      terminalResultPath: args[2],
+      outputPath: args[3],
+      timeoutMs: args[4] === undefined ? 5000 : Number(args[4]),
+    }).catch(() => process.exit(1));
   } else if (command === "event" && args.length === 3) {
     eventCommand(args[0], args[1], args[2]);
   } else {

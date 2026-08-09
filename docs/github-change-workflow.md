@@ -155,13 +155,30 @@ ID, run attempt, and stage, so publisher retries do not duplicate the record.
 Artifacts are retained for three days. Token classes remain separate; cached
 input and reasoning output are not added to a derived total.
 
+Receiver finalization uses a runner-temporary stop request and an atomic terminal
+result instead of shell process ownership across Actions steps. The finalizer
+waits up to five seconds for the loopback receiver to stop accepting requests,
+drain accepted requests, and publish its result. The terminal result is written
+to a restrictive temporary file and renamed into place, so its presence is the
+completion acknowledgement rather than a partially written measurement.
+
 Measurement is observational and fail-open. Missing, malformed, or unavailable
-telemetry produces `measurement_status: unavailable` with all token counts set
-to `null`; it does not block planning or implementation publication. Events are
+telemetry produces `measurement_status: unavailable`, one fixed sanitized
+`measurement_reason`, and all token counts set to `null`; it does not block
+planning or implementation publication. Reasons distinguish no completed
+response, rejected telemetry, receiver startup failure, invalid terminal output,
+and finalization timeout without including exception text or payload content.
+Events are
 not created for skipped or rejected triggers because Codex is not invoked. A
 hard workflow cancellation can prevent finalization and is an explicit pilot
 limitation; cancellation reconciliation, local interactive measurement,
 pricing, dashboards, and centralized telemetry storage remain out of scope.
+
+The workflow pins the Codex CLI contract used by `openai/codex-action` to
+`0.147.0`. When that version changes, update the pin and the sanitized
+completed-response fixture in `.github/fixtures/codex-usage/` together, review
+the allowlisted attributes, and run the telemetry unit and process-lifecycle
+tests before merging.
 
 ## Failure recovery
 

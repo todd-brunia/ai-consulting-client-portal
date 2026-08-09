@@ -121,6 +121,7 @@ describe("workflow state", () => {
     expect(workflow).toContain(
       "effort: ${{ steps.context.outputs.stage == 'implement' && 'medium' || 'low' }}",
     );
+    expect(workflow).toContain("codex-version: 0.147.0");
     expect(workflow).not.toMatch(/model:.*gpt-5\.6-sol/);
     expect(workflow).not.toMatch(/effort:.*high/);
   });
@@ -136,6 +137,10 @@ describe("workflow state", () => {
     expect(generate).toContain("log_user_prompt = false");
     expect(generate).toContain("http://127.0.0.1:${port}/v1/logs");
     expect(generate).toContain("Finalize fail-open usage event");
+    expect(generate).toContain('codex-usage-telemetry.mjs" finalize');
+    expect(generate).toContain('"$RUNNER_TEMP/codex-usage-stop.json"');
+    expect(generate).toContain('"$RUNNER_TEMP/codex-usage-terminal.json"');
+    expect(generate).not.toContain('wait "$(cat "$RUNNER_TEMP/codex-usage-receiver.pid")"');
     expect(generate).toContain("if: always() && steps.context.outputs.action == 'run'");
     expect(generate).toContain("Upload sanitized usage event");
     expect(generate).toContain("retention-days: 3");
