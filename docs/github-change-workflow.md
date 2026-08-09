@@ -126,6 +126,14 @@ child marker, open state, and `needs-planning` label before Codex runs. It has n
 dispatch or issue-event trigger and cannot select implementation or another
 privileged stage.
 
+GitHub validates a reusable workflow's complete permission contract before it
+evaluates job conditions. The `plan_split_children` caller therefore grants the
+called workflow's maximum bounded permissions—read access to actions and
+contents plus issue write access—while the parent workflow keeps its read-only
+top-level default. The called generation job further reduces its token to read
+access; only its trusted publication job retains issue write access. Keeping the
+grant on the caller job prevents unrelated jobs from inheriting it.
+
 Retries reuse existing children and skip a child that already has a marked plan
 or has advanced beyond `needs-planning`. A tampered identity or fingerprint
 fails visibly; partial child publication does not start the handoff. Ordinary
@@ -133,6 +141,11 @@ bot-applied label events still fail the normal human actor check—
 `github-actions` is not a generally trusted planning actor. Each child still
 requires human plan review and implementation approval; split approval grants
 neither.
+
+GitHub creates a workflow run for every `issues: labeled` event and does not
+support filtering that trigger by label name. Non-stage labels therefore remain
+visible as skipped runs after job guards are evaluated; they do not invoke Codex
+and must not fail workflow graph validation.
 
 Automation does not approve plans, apply `approved-for-build`, mark
 `preview-ready`, merge, release, deploy, or push to `main`.
@@ -216,7 +229,9 @@ old workflow, reuse its expiring artifact, or bulk-change the three issues.
 ### Recovery checkpoint for split children #105–#110
 
 The split-to-plan handoff is intentionally not applied retroactively. After
-this fix is merged, an owner may recover #105–#110 only after confirming that
+the reusable-workflow permission fix is merged, first verify a controlled
+planning invocation creates jobs instead of ending in `startup_failure`. An
+owner may then recover #105–#110 one at a time only after confirming that
 each issue is still open, has exactly one expected split-child marker, remains
 in `needs-planning`, has no marked planning comment, and has not acquired any
 advanced workflow-state label. Record that checkpoint in a trusted issue

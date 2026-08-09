@@ -618,6 +618,10 @@ jobs:
     name: Plan published split child
     needs: publish_split
     if: needs.publish_split.result == 'success' && needs.publish_split.outputs.children != ''
+    permissions:
+      actions: read
+      contents: read
+      issues: write
     strategy:
       fail-fast: false
       matrix:
