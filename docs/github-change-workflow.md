@@ -70,6 +70,41 @@ Classification controls the next human action:
   apply `approved-for-split` only when the decomposition should be published.
   Split approval does not approve any child for implementation.
 
+### Split proposal envelope and publication budgets
+
+New `split-required` comments encode a canonical `split/v2` envelope containing
+only the trusted planning fingerprint and normalized child IDs, titles,
+outcomes, acceptance criteria, dependencies, included and excluded scope, and
+suggested topic labels. The complete `plan/v2` result remains visible for human
+review; unrelated review and machine-implementation sections are not duplicated
+in the hidden marker.
+
+Trusted publication measures UTF-8 bytes against separate named limits:
+
+| Component | Limit |
+| --- | ---: |
+| Visible heading and rendered `plan/v2` Markdown | 14,000 bytes |
+| Encoded compact split marker | 5,500 bytes |
+| Trusted marker and newline framing | 500 bytes |
+| Complete public comment | 20,000 bytes |
+
+Every applicable component and the final body must pass its limit, and the
+existing global public-text validator remains the final credential and size
+check. Size failures report only the component name, measured bytes, and limit;
+they never echo model text or encoded data. Publication happens before label
+transition, so a rejected body cannot appear successful. The existing failure
+reporter removes the triggering planning or revision label, applies `blocked`,
+and posts its bounded workflow-run diagnostic.
+
+The decoder accepts legacy `{ digest, result }` markers published before
+`split/v2`, normalizes them to the same trusted child-only representation, and
+keeps the trusted-bot, stage-marker, fingerprint, and human split-approval
+checks. New comments emit only `split/v2`. Keep legacy reads until all
+historical split proposals that may still be approved are closed or explicitly
+superseded; removal requires a separately approved issue and an inventory
+proving no actionable legacy marker remains. Historical comments are never
+rewritten.
+
 ## Automation boundary
 
 The label event validates the actor, issue state, frozen planning snapshot, and
@@ -150,6 +185,16 @@ general approval while requiring a fresh human automation authorization.
 Do not bypass or weaken either approval gate to recover a failed run. Fix the
 trusted validation, repository configuration, credential handling, or other
 root cause first; then use the label sequence above for the retry.
+
+### Recovery checkpoint for split publication #115, #117, and #119
+
+After the compact-envelope change is merged and its workflow tests pass, retry
+#115, #117, and #119 one at a time. For each issue, confirm it is still open and
+blocked for the publication-size failure, remove `blocked`, and reapply
+`needs-planning` as the owner. Verify that exactly one current planning marker
+is published, its `split/v2` envelope decodes to the displayed children, and the
+issue reaches `split-proposed` before retrying the next issue. Do not rerun the
+old workflow, reuse its expiring artifact, or bulk-change the three issues.
 
 ### Recovery checkpoint for split children #105–#110
 

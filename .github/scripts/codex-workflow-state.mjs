@@ -5,6 +5,13 @@ export const AUTOMATION_MARKER_PREFIX = "<!-- codex-automation:";
 export const SPLIT_PROPOSAL_PREFIX = "<!-- codex-split-proposal:";
 export const SPLIT_CHILD_PREFIX = "<!-- codex-split-child:";
 export const SPLIT_CHECKLIST_PREFIX = "<!-- codex-split-checklist:";
+export const SPLIT_ENVELOPE_VERSION = "split/v2";
+export const PLANNING_COMMENT_BUDGETS = Object.freeze({
+  visibleBytes: 14_000,
+  machineBytes: 5_500,
+  framingBytes: 500,
+  combinedBytes: 20_000,
+});
 export const STATE_LABELS = [
   "needs-planning",
   "plan-ready",
@@ -55,6 +62,17 @@ function stableJson(value) {
       .join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+function assertExactKeys(value, expected, name) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${name} must be an object.`);
+  }
+  const actual = Object.keys(value).sort();
+  const wanted = [...expected].sort();
+  if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) {
+    throw new Error(`${name} has unexpected or missing fields.`);
+  }
 }
 
 export function validateResponseSchemaCompatibility(schema, path = "$") {
@@ -165,6 +183,39 @@ function validateSplitChildren(children) {
       throw new Error(`children[${index}].suggestedLabels must be unique.`);
     }
   }
+}
+
+const SPLIT_CHILD_KEYS = [
+  "id",
+  "title",
+  "outcome",
+  "acceptanceCriteria",
+  "dependencies",
+  "includedScope",
+  "excludedScope",
+  "suggestedLabels",
+];
+
+function normalizeSplitChildren(children) {
+  validateSplitChildren(children);
+  return children.map((child) => Object.fromEntries(
+    SPLIT_CHILD_KEYS.map((key) => [key, Array.isArray(child[key]) ? [...child[key]] : child[key]]),
+  ));
+}
+
+function validateSplitEnvelope(envelope) {
+  assertExactKeys(envelope, ["version", "digest", "children"], "Split envelope");
+  if (envelope.version !== SPLIT_ENVELOPE_VERSION) {
+    throw new Error("Split envelope version is not supported.");
+  }
+  if (!/^[a-f0-9]{64}$/.test(envelope.digest ?? "")) {
+    throw new Error("Split proposal fingerprint is invalid.");
+  }
+  for (const [index, child] of (envelope.children ?? []).entries()) {
+    assertExactKeys(child, SPLIT_CHILD_KEYS, `Split envelope children[${index}]`);
+  }
+  validateSplitChildren(envelope.children);
+  return envelope;
 }
 
 function assertSafeDecisionText(value, name, options) {
@@ -326,30 +377,46 @@ export function encodeSplitProposal(result, digest) {
   if (result.classification !== "split-required") {
     throw new Error("Only split-required results have a split proposal.");
   }
-  const payload = Buffer.from(JSON.stringify({ digest, result }), "utf8").toString("base64url");
-  return `${SPLIT_PROPOSAL_PREFIX}${payload} -->`;
+  const envelope = validateSplitEnvelope({
+    version: SPLIT_ENVELOPE_VERSION,
+    digest,
+    children: normalizeSplitChildren(result.children),
+  });
+  const payload = Buffer.from(stableJson(envelope), "utf8").toString("base64url");
+  const marker = `${SPLIT_PROPOSAL_PREFIX}${payload} -->`;
+  validatePlanningCommentComponent("machine payload", marker, PLANNING_COMMENT_BUDGETS.machineBytes);
+  return marker;
 }
 
 export function decodeSplitProposal(comment) {
   const start = comment.indexOf(SPLIT_PROPOSAL_PREFIX);
   if (start < 0) return null;
+  if (comment.indexOf(SPLIT_PROPOSAL_PREFIX, start + SPLIT_PROPOSAL_PREFIX.length) >= 0) {
+    throw new Error("Multiple split proposal markers require human review.");
+  }
   const encodedStart = start + SPLIT_PROPOSAL_PREFIX.length;
   const end = comment.indexOf(" -->", encodedStart);
   if (end < 0) throw new Error("Split proposal marker is malformed.");
+  const encoded = comment.slice(encodedStart, end);
+  if (!/^[A-Za-z0-9_-]+$/.test(encoded)) throw new Error("Split proposal payload is malformed.");
   let parsed;
   try {
-    parsed = JSON.parse(Buffer.from(comment.slice(encodedStart, end), "base64url").toString("utf8"));
+    const decoded = Buffer.from(encoded, "base64url");
+    if (decoded.toString("base64url") !== encoded) throw new Error("Non-canonical Base64URL.");
+    parsed = JSON.parse(decoded.toString("utf8"));
   } catch {
     throw new Error("Split proposal payload is malformed.");
   }
-  if (!/^[a-f0-9]{64}$/.test(parsed.digest ?? "")) {
-    throw new Error("Split proposal fingerprint is invalid.");
+  if (parsed.version !== undefined) {
+    validateSplitEnvelope(parsed);
+    return { digest: parsed.digest, children: normalizeSplitChildren(parsed.children) };
   }
+
+  assertExactKeys(parsed, ["digest", "result"], "Legacy split proposal");
+  if (!/^[a-f0-9]{64}$/.test(parsed.digest ?? "")) throw new Error("Split proposal fingerprint is invalid.");
   validatePlanningResultForContract(parsed.result);
-  if (parsed.result.classification !== "split-required") {
-    throw new Error("Embedded proposal is not split-required.");
-  }
-  return parsed;
+  if (parsed.result.classification !== "split-required") throw new Error("Embedded proposal is not split-required.");
+  return { digest: parsed.digest, children: normalizeSplitChildren(parsed.result.children) };
 }
 
 export function approvedSplitProposal(comments) {
@@ -434,6 +501,30 @@ export function renderPlanningResultV2(result) {
   });
 
   return `## Human Review Summary\n\n### Objective\n\n${result.objective}\n\n### Executive Summary\n\n${result.executiveSummary}\n\n### Key Decisions\n\n${renderList(result.keyDecisions)}\n\n### Tradeoffs\n\n${renderList(result.tradeoffs)}\n\n### Risks\n\n${renderList(result.risks)}\n\n### Open Questions\n\n${renderList(result.openQuestions)}\n\n### File Impacts\n\n${fileChanges}\n\n### Implementation Sequence\n\n${renderList(result.implementationOrder, { ordered: true })}${classificationDetails}\n\n## Teach Me\n\n${teachMe}\n\n## Decisions the Reviewer Should Challenge\n\n${challenges}\n\n## Machine Implementation Details\n\n${result.machineImplementationDetails}`;
+}
+
+export function validatePlanningCommentComponent(name, value, maxBytes) {
+  const bytes = Buffer.byteLength(value, "utf8");
+  if (bytes > maxBytes) {
+    throw new Error(`Planning comment ${name} is ${bytes} bytes; limit is ${maxBytes} bytes.`);
+  }
+  return bytes;
+}
+
+export function composePlanningComment({ automationMarker, heading, result }) {
+  validatePlanningResultV2(result);
+  const visible = `${heading}\n\n${renderPlanningResultV2(result)}`;
+  const machine = result.classification === "split-required"
+    ? encodeSplitProposal(result, automationMarker.match(/:([a-f0-9]{64}) -->$/)?.[1])
+    : "";
+  const framing = `${automationMarker}${machine ? "\n" : ""}\n`;
+  validatePlanningCommentComponent("visible Markdown", visible, PLANNING_COMMENT_BUDGETS.visibleBytes);
+  if (machine) validatePlanningCommentComponent("machine payload", machine, PLANNING_COMMENT_BUDGETS.machineBytes);
+  validatePlanningCommentComponent("framing", framing, PLANNING_COMMENT_BUDGETS.framingBytes);
+  const body = `${automationMarker}${machine ? `\n${machine}` : ""}\n${visible}`;
+  validatePlanningCommentComponent("combined body", body, PLANNING_COMMENT_BUDGETS.combinedBytes);
+  validatePublicText(body);
+  return body;
 }
 
 export function latestPlanIndex(comments) {
@@ -617,7 +708,7 @@ export function evaluateTrigger({
   if (requestedStage === "split") {
     try {
       const proposal = approvedSplitProposal(comments);
-      return { action: "run", digest: proposal.digest, source: proposal.result };
+      return { action: "run", digest: proposal.digest, source: proposal.children };
     } catch (error) {
       return { action: "block", reason: error.message };
     }
@@ -663,7 +754,7 @@ export function evaluateSplitPlanHandoff({
   try {
     const proposal = approvedSplitProposal(parentComments);
     validateSplitFingerprint(proposal, digest);
-    if (!proposal.result.children.some((candidate) => candidate.id === childId)) {
+    if (!proposal.children.some((candidate) => candidate.id === childId)) {
       throw new Error("The child id is not present in the approved split proposal.");
     }
   } catch (error) {

@@ -25,6 +25,9 @@ completed approved split continues directly into one plan-only execution for
 each exact publisher-confirmed child. The bounded handoff does not trust the
 workflow bot generally and grants no implementation authority. Retries skip
 children that already have a plan or have advanced beyond `needs-planning`.
+New split proposals store a compact `split/v2` child envelope in the marked
+comment while the complete `plan/v2` review stays visible. Historical full-plan
+markers remain readable during the compatibility window; they are not rewritten.
 
 When planning applies `needs-decision`, record the chosen direction in a
 trusted issue comment by naming the option ID and any constraints or rationale

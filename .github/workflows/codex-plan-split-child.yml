@@ -184,11 +184,11 @@ jobs:
             }
             const parsed = JSON.parse(fs.readFileSync("codex-output.json", "utf8"));
             helpers.validatePlanningResultV2(parsed);
-            const structured = parsed.classification === "split-required"
-              ? `\n${helpers.encodeSplitProposal(parsed, process.env.MARKER.match(/:([a-f0-9]{64}) -->$/)[1])}`
-              : "";
-            const body = `${process.env.MARKER}${structured}\n${helpers.PLAN_MARKER}\n## Codex implementation proposal\n\n${helpers.renderPlanningResultV2(parsed)}`;
-            helpers.validatePublicText(body);
+            const body = helpers.composePlanningComment({
+              automationMarker: process.env.MARKER,
+              heading: `${helpers.PLAN_MARKER}\n## Codex implementation proposal`,
+              result: parsed,
+            });
             await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: childNumber, body });
             const transition = helpers.transitionFor("plan", parsed.classification);
             for (const name of transition.remove) {
