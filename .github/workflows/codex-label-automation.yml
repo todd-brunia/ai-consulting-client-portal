@@ -179,8 +179,7 @@ jobs:
         run: |
           cp .github/scripts/codex-usage-telemetry.mjs "$RUNNER_TEMP/codex-usage-telemetry.mjs"
           mkdir -p "$RUNNER_TEMP/codex-usage-home"
-          node "$RUNNER_TEMP/codex-usage-telemetry.mjs" receive "$RUNNER_TEMP/codex-usage-listener.json" "$RUNNER_TEMP/codex-usage-measurement.json" &
-          echo "$!" > "$RUNNER_TEMP/codex-usage-receiver.pid"
+          node "$RUNNER_TEMP/codex-usage-telemetry.mjs" receive "$RUNNER_TEMP/codex-usage-listener.json" "$RUNNER_TEMP/codex-usage-terminal.json" "$RUNNER_TEMP/codex-usage-stop.json" &
           for attempt in {1..20}; do
             [ -s "$RUNNER_TEMP/codex-usage-listener.json" ] && break
             sleep 0.1
@@ -202,6 +201,7 @@ jobs:
         uses: openai/codex-action@b11346a6fa031e2e164ab4b7c7ea201afffd7d59 # v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          codex-version: 0.147.0
           model: ${{ steps.context.outputs.stage == 'implement' && 'gpt-5.6-terra' || 'gpt-5.6-luna' }}
           effort: ${{ steps.context.outputs.stage == 'implement' && 'medium' || 'low' }}
           prompt-file: .github/codex/prompts/${{ steps.context.outputs.stage }}.md
@@ -228,10 +228,7 @@ jobs:
           OUTCOME: ${{ steps.codex.outcome == 'success' && 'success' || 'failure' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if [ -f "$RUNNER_TEMP/codex-usage-receiver.pid" ]; then
-            kill -TERM "$(cat "$RUNNER_TEMP/codex-usage-receiver.pid")" || true
-            wait "$(cat "$RUNNER_TEMP/codex-usage-receiver.pid")" || true
-          fi
+          node "$RUNNER_TEMP/codex-usage-telemetry.mjs" finalize "$RUNNER_TEMP/codex-usage-listener.json" "$RUNNER_TEMP/codex-usage-stop.json" "$RUNNER_TEMP/codex-usage-terminal.json" "$RUNNER_TEMP/codex-usage-measurement.json" 5000
           started_at="${{ steps.usage_telemetry.outputs.started_at }}"
           duration_ms=0
           if [ -n "$started_at" ]; then
