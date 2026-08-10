@@ -12,6 +12,52 @@ export const PLANNING_COMMENT_BUDGETS = Object.freeze({
   framingBytes: 500,
   combinedBytes: 20_000,
 });
+export const PLAN_V2_LIMITS = Object.freeze({
+  objective: Object.freeze({ min: 10, max: 500 }),
+  executiveSummary: Object.freeze({ min: 40, max: 4_000 }),
+  keyDecisions: Object.freeze({ min: 1, max: 12, itemMin: 5, itemMax: 500 }),
+  optionalReviewLists: Object.freeze({ min: 0, max: 12, itemMin: 5, itemMax: 500 }),
+  fileChanges: Object.freeze({ min: 1, max: 50, pathMin: 1, pathMax: 500, changeMin: 5, changeMax: 500 }),
+  implementationOrder: Object.freeze({ min: 1, max: 20, itemMin: 5, itemMax: 1_000 }),
+  teachMe: Object.freeze({ min: 0, max: 10, conceptMin: 3, conceptMax: 160, detailMin: 10, detailMax: 1_000 }),
+  reviewerChallengePoints: Object.freeze({ min: 0, max: 5, itemMin: 10, itemMax: 500 }),
+  machineImplementationDetails: Object.freeze({ min: 40, max: 12_000 }),
+  blockingDecision: Object.freeze({ min: 10, max: 2_000 }),
+  splitReason: Object.freeze({ min: 10, max: 2_000 }),
+  children: Object.freeze({
+    min: 2,
+    max: 10,
+    idMin: 3,
+    idMax: 64,
+    titleMin: 5,
+    titleMax: 160,
+    outcomeMin: 10,
+    outcomeMax: 2_000,
+    listMin: 1,
+    listMax: 12,
+    listItemMax: 500,
+    substantiveItemMin: 3,
+    suggestedLabelsMin: 0,
+    suggestedLabelsMax: 10,
+    suggestedLabelMax: 50,
+  }),
+  decisionOptions: Object.freeze({ min: 2, max: 4, idMin: 3, idMax: 64, labelMin: 3, labelMax: 120, descriptionMin: 10, descriptionMax: 1_000 }),
+  decisionTradeoffs: Object.freeze({ min: 1, max: 6, itemMin: 5, itemMax: 500 }),
+  recommendationRationale: Object.freeze({ min: 20, max: 2_000 }),
+});
+
+export function renderPlanV2ConstraintReference() {
+  const limits = PLAN_V2_LIMITS;
+  return `### Required plan/v2 constraint reference
+
+- Text lengths: objective ${limits.objective.min}-${limits.objective.max}; executiveSummary ${limits.executiveSummary.min}-${limits.executiveSummary.max}; machineImplementationDetails ${limits.machineImplementationDetails.min}-${limits.machineImplementationDetails.max}; blockingDecision and splitReason ${limits.blockingDecision.min}-${limits.blockingDecision.max} characters when applicable.
+- Review lists: keyDecisions ${limits.keyDecisions.min}-${limits.keyDecisions.max} items of ${limits.keyDecisions.itemMin}-${limits.keyDecisions.itemMax} characters; tradeoffs, risks, and openQuestions ${limits.optionalReviewLists.min}-${limits.optionalReviewLists.max} items of ${limits.optionalReviewLists.itemMin}-${limits.optionalReviewLists.itemMax}; implementationOrder ${limits.implementationOrder.min}-${limits.implementationOrder.max} items of ${limits.implementationOrder.itemMin}-${limits.implementationOrder.itemMax}; reviewerChallengePoints ${limits.reviewerChallengePoints.min}-${limits.reviewerChallengePoints.max} items of ${limits.reviewerChallengePoints.itemMin}-${limits.reviewerChallengePoints.itemMax}; every review list is unique after trim/case normalization.
+- Structured sections: fileChanges ${limits.fileChanges.min}-${limits.fileChanges.max} entries with unique ${limits.fileChanges.pathMin}-${limits.fileChanges.pathMax}-character paths and ${limits.fileChanges.changeMin}-${limits.fileChanges.changeMax}-character changes; teachMe ${limits.teachMe.min}-${limits.teachMe.max} entries with unique ${limits.teachMe.conceptMin}-${limits.teachMe.conceptMax}-character concepts and ${limits.teachMe.detailMin}-${limits.teachMe.detailMax}-character explanations; decisionOptions ${limits.decisionOptions.min}-${limits.decisionOptions.max} entries with unique ${limits.decisionOptions.idMin}-${limits.decisionOptions.idMax}-character kebab-case IDs, unique ${limits.decisionOptions.labelMin}-${limits.decisionOptions.labelMax}-character labels, ${limits.decisionOptions.descriptionMin}-${limits.decisionOptions.descriptionMax}-character descriptions, and ${limits.decisionTradeoffs.min}-${limits.decisionTradeoffs.max} unique ${limits.decisionTradeoffs.itemMin}-${limits.decisionTradeoffs.itemMax}-character non-filler tradeoffs; recommendationRationale is ${limits.recommendationRationale.min}-${limits.recommendationRationale.max} characters.
+- Split proposals: ${limits.children.min}-${limits.children.max} children with unique ${limits.children.idMin}-${limits.children.idMax}-character kebab-case IDs, ${limits.children.titleMin}-${limits.children.titleMax}-character titles, outcomes and splitReason of at least 10 characters, 1-12 acceptance/dependency/included/excluded items of at most 500 characters, and 0-10 unique suggested labels of at most 50 characters per child.
+- Classification coupling: focused uses null for all decision and split fields; needs-decision supplies all decision fields and null split fields; split-required supplies splitReason and children and null decision fields.
+- Public safety: all strings reject credentials and reserved automation markers; decision text also rejects requests for sensitive values, generic filler, and unsupported certainty; duplicate checks normalize reviewer text case and surrounding whitespace.
+- Publication budgets: visible Markdown ${PLANNING_COMMENT_BUDGETS.visibleBytes} bytes, machine payload ${PLANNING_COMMENT_BUDGETS.machineBytes} bytes, framing ${PLANNING_COMMENT_BUDGETS.framingBytes} bytes, and combined comment ${PLANNING_COMMENT_BUDGETS.combinedBytes} bytes. Never truncate material content to fit.`;
+}
 export const STATE_LABELS = [
   "needs-planning",
   "plan-ready",
@@ -145,7 +191,7 @@ function validatePlanningClassificationFields(result) {
     return result;
   }
   if (result.classification === "needs-decision") {
-    assertText(result.blockingDecision, "blockingDecision", { min: 10 });
+    assertText(result.blockingDecision, "blockingDecision", PLAN_V2_LIMITS.blockingDecision);
     if (result.splitReason !== null || result.children !== null) {
       throw new Error("Needs-decision split fields must be null.");
     }
@@ -155,30 +201,37 @@ function validatePlanningClassificationFields(result) {
   if (result.blockingDecision !== null) {
     throw new Error("Split-required blockingDecision must be null.");
   }
-  assertText(result.splitReason, "splitReason", { min: 10 });
+  assertText(result.splitReason, "splitReason", PLAN_V2_LIMITS.splitReason);
   validateSplitChildren(result.children);
   return result;
 }
 
 function validateSplitChildren(children) {
-  if (!Array.isArray(children) || children.length < 2 || children.length > 10) {
-    throw new Error("A split proposal must contain 2-10 children.");
+  const limits = PLAN_V2_LIMITS.children;
+  if (!Array.isArray(children) || children.length < limits.min || children.length > limits.max) {
+    throw new Error(`A split proposal must contain ${limits.min}-${limits.max} children.`);
   }
   const ids = new Set();
   for (const [index, child] of children.entries()) {
     if (!child || typeof child !== "object") throw new Error(`children[${index}] is invalid.`);
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(child.id ?? "") || child.id.length < 3 || child.id.length > 64) {
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(child.id ?? "") || child.id.length < limits.idMin || child.id.length > limits.idMax) {
       throw new Error(`children[${index}].id must be stable kebab-case.`);
     }
     if (ids.has(child.id)) throw new Error(`Duplicate child id: ${child.id}`);
     ids.add(child.id);
-    assertText(child.title, `children[${index}].title`, { min: 5, max: 160 });
-    assertText(child.outcome, `children[${index}].outcome`, { min: 10 });
-    assertTextList(child.acceptanceCriteria, `children[${index}].acceptanceCriteria`, { itemMin: 3 });
-    assertTextList(child.dependencies, `children[${index}].dependencies`);
-    assertTextList(child.includedScope, `children[${index}].includedScope`, { itemMin: 3 });
-    assertTextList(child.excludedScope, `children[${index}].excludedScope`, { itemMin: 3 });
-    assertTextList(child.suggestedLabels, `children[${index}].suggestedLabels`, { min: 0, max: 10, itemMax: 50 });
+    assertText(child.title, `children[${index}].title`, { min: limits.titleMin, max: limits.titleMax });
+    assertText(child.outcome, `children[${index}].outcome`, { min: limits.outcomeMin, max: limits.outcomeMax });
+    const substantiveList = { min: limits.listMin, max: limits.listMax, itemMin: limits.substantiveItemMin, itemMax: limits.listItemMax };
+    const dependencyList = { min: limits.listMin, max: limits.listMax, itemMin: 1, itemMax: limits.listItemMax };
+    assertTextList(child.acceptanceCriteria, `children[${index}].acceptanceCriteria`, substantiveList);
+    assertTextList(child.dependencies, `children[${index}].dependencies`, dependencyList);
+    assertTextList(child.includedScope, `children[${index}].includedScope`, substantiveList);
+    assertTextList(child.excludedScope, `children[${index}].excludedScope`, substantiveList);
+    assertTextList(child.suggestedLabels, `children[${index}].suggestedLabels`, {
+      min: limits.suggestedLabelsMin,
+      max: limits.suggestedLabelsMax,
+      itemMax: limits.suggestedLabelMax,
+    });
     if (new Set(child.suggestedLabels).size !== child.suggestedLabels.length) {
       throw new Error(`children[${index}].suggestedLabels must be unique.`);
     }
@@ -241,27 +294,28 @@ function validateDecisionFieldsV2(result) {
     return;
   }
 
-  if (!Array.isArray(result.decisionOptions) || result.decisionOptions.length < 2 || result.decisionOptions.length > 4) {
-    throw new Error("decisionOptions must contain 2-4 options for needs-decision.");
+  const optionLimits = PLAN_V2_LIMITS.decisionOptions;
+  if (!Array.isArray(result.decisionOptions) || result.decisionOptions.length < optionLimits.min || result.decisionOptions.length > optionLimits.max) {
+    throw new Error(`decisionOptions must contain ${optionLimits.min}-${optionLimits.max} options for needs-decision.`);
   }
-  assertSafeDecisionText(result.blockingDecision, "blockingDecision", { min: 10, max: 2_000 });
+  assertSafeDecisionText(result.blockingDecision, "blockingDecision", PLAN_V2_LIMITS.blockingDecision);
   const ids = new Set();
   const labels = new Set();
   for (const [index, option] of result.decisionOptions.entries()) {
     if (!option || typeof option !== "object") throw new Error(`decisionOptions[${index}] is invalid.`);
-    const id = assertSafeDecisionText(option.id, `decisionOptions[${index}].id`, { min: 3, max: 64 });
+    const id = assertSafeDecisionText(option.id, `decisionOptions[${index}].id`, { min: optionLimits.idMin, max: optionLimits.idMax });
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) {
       throw new Error(`decisionOptions[${index}].id must be stable kebab-case.`);
     }
-    const label = assertSafeDecisionText(option.label, `decisionOptions[${index}].label`, { min: 3, max: 120 });
-    const description = assertSafeDecisionText(option.description, `decisionOptions[${index}].description`, { min: 10, max: 1_000 });
+    const label = assertSafeDecisionText(option.label, `decisionOptions[${index}].label`, { min: optionLimits.labelMin, max: optionLimits.labelMax });
+    const description = assertSafeDecisionText(option.description, `decisionOptions[${index}].description`, { min: optionLimits.descriptionMin, max: optionLimits.descriptionMax });
     assertUniqueTextList(option.tradeoffs, `decisionOptions[${index}].tradeoffs`, {
-      min: 1,
-      max: 6,
-      itemMin: 5,
-      itemMax: 500,
+      ...PLAN_V2_LIMITS.decisionTradeoffs,
     }).forEach((tradeoff, tradeoffIndex) => {
-      assertSafeDecisionText(tradeoff, `decisionOptions[${index}].tradeoffs[${tradeoffIndex}]`, { min: 5, max: 500 });
+      assertSafeDecisionText(tradeoff, `decisionOptions[${index}].tradeoffs[${tradeoffIndex}]`, {
+        min: PLAN_V2_LIMITS.decisionTradeoffs.itemMin,
+        max: PLAN_V2_LIMITS.decisionTradeoffs.itemMax,
+      });
       if (/^(?:none|n\/?a|not applicable|no tradeoffs?|tbd|to be determined)[.!]?$/i.test(tradeoff.trim())) {
         throw new Error(`decisionOptions[${index}].tradeoffs must not contain generic filler.`);
       }
@@ -277,16 +331,13 @@ function validateDecisionFieldsV2(result) {
     labels.add(normalizedLabel);
   }
   const recommendationId = assertSafeDecisionText(result.recommendedOptionId, "recommendedOptionId", {
-    min: 3,
-    max: 64,
+    min: optionLimits.idMin,
+    max: optionLimits.idMax,
   });
   if (!ids.has(recommendationId)) {
     throw new Error("recommendedOptionId must reference a supplied decision option.");
   }
-  const rationale = assertSafeDecisionText(result.recommendationRationale, "recommendationRationale", {
-    min: 20,
-    max: 2_000,
-  });
+  const rationale = assertSafeDecisionText(result.recommendationRationale, "recommendationRationale", PLAN_V2_LIMITS.recommendationRationale);
   if (/\b(?:certainly|definitely|guarantee(?:d|s)?|without (?:any )?risk|no downside)\b/i.test(rationale)) {
     throw new Error("recommendationRationale must not claim unsupported certainty.");
   }
@@ -312,55 +363,47 @@ export function validatePlanningResultV2(result) {
     throw new Error("Planning result has an invalid classification.");
   }
 
-  assertText(result.objective, "objective", { min: 10, max: 500 });
-  assertText(result.executiveSummary, "executiveSummary", { min: 40, max: 4_000 });
-  assertUniqueTextList(result.keyDecisions, "keyDecisions", { min: 1, max: 12, itemMin: 5, itemMax: 500 });
-  assertUniqueTextList(result.tradeoffs, "tradeoffs", { min: 0, max: 12, itemMin: 5, itemMax: 500 });
-  assertUniqueTextList(result.risks, "risks", { min: 0, max: 12, itemMin: 5, itemMax: 500 });
-  assertUniqueTextList(result.openQuestions, "openQuestions", { min: 0, max: 12, itemMin: 5, itemMax: 500 });
+  assertText(result.objective, "objective", PLAN_V2_LIMITS.objective);
+  assertText(result.executiveSummary, "executiveSummary", PLAN_V2_LIMITS.executiveSummary);
+  assertUniqueTextList(result.keyDecisions, "keyDecisions", PLAN_V2_LIMITS.keyDecisions);
+  assertUniqueTextList(result.tradeoffs, "tradeoffs", PLAN_V2_LIMITS.optionalReviewLists);
+  assertUniqueTextList(result.risks, "risks", PLAN_V2_LIMITS.optionalReviewLists);
+  assertUniqueTextList(result.openQuestions, "openQuestions", PLAN_V2_LIMITS.optionalReviewLists);
 
-  if (!Array.isArray(result.fileChanges) || result.fileChanges.length < 1 || result.fileChanges.length > 50) {
-    throw new Error("fileChanges must contain 1-50 items.");
+  const fileLimits = PLAN_V2_LIMITS.fileChanges;
+  if (!Array.isArray(result.fileChanges) || result.fileChanges.length < fileLimits.min || result.fileChanges.length > fileLimits.max) {
+    throw new Error(`fileChanges must contain ${fileLimits.min}-${fileLimits.max} items.`);
   }
   const paths = new Set();
   for (const [index, fileChange] of result.fileChanges.entries()) {
     if (!fileChange || typeof fileChange !== "object") throw new Error(`fileChanges[${index}] is invalid.`);
-    const path = assertText(fileChange.path, `fileChanges[${index}].path`, { min: 1, max: 500 });
-    assertText(fileChange.change, `fileChanges[${index}].change`, { min: 5, max: 500 });
+    const path = assertText(fileChange.path, `fileChanges[${index}].path`, { min: fileLimits.pathMin, max: fileLimits.pathMax });
+    assertText(fileChange.change, `fileChanges[${index}].change`, { min: fileLimits.changeMin, max: fileLimits.changeMax });
     if (paths.has(path)) throw new Error(`Duplicate fileChanges path: ${path}`);
     paths.add(path);
   }
 
-  assertUniqueTextList(result.implementationOrder, "implementationOrder", {
-    min: 1,
-    max: 20,
-    itemMin: 5,
-    itemMax: 1_000,
-  });
-  if (!Array.isArray(result.teachMe) || result.teachMe.length > 10) {
-    throw new Error("teachMe must contain 0-10 items.");
+  assertUniqueTextList(result.implementationOrder, "implementationOrder", PLAN_V2_LIMITS.implementationOrder);
+  const teachLimits = PLAN_V2_LIMITS.teachMe;
+  if (!Array.isArray(result.teachMe) || result.teachMe.length < teachLimits.min || result.teachMe.length > teachLimits.max) {
+    throw new Error(`teachMe must contain ${teachLimits.min}-${teachLimits.max} items.`);
   }
   const concepts = new Set();
   for (const [index, entry] of result.teachMe.entries()) {
     if (!entry || typeof entry !== "object") throw new Error(`teachMe[${index}] is invalid.`);
-    const concept = assertText(entry.concept, `teachMe[${index}].concept`, { min: 3, max: 160 });
-    assertText(entry.whatItIs, `teachMe[${index}].whatItIs`, { min: 10, max: 1_000 });
-    assertText(entry.whyUsed, `teachMe[${index}].whyUsed`, { min: 10, max: 1_000 });
-    assertText(entry.whyPreferred, `teachMe[${index}].whyPreferred`, { min: 10, max: 1_000 });
+    const concept = assertText(entry.concept, `teachMe[${index}].concept`, { min: teachLimits.conceptMin, max: teachLimits.conceptMax });
+    assertText(entry.whatItIs, `teachMe[${index}].whatItIs`, { min: teachLimits.detailMin, max: teachLimits.detailMax });
+    assertText(entry.whyUsed, `teachMe[${index}].whyUsed`, { min: teachLimits.detailMin, max: teachLimits.detailMax });
+    assertText(entry.whyPreferred, `teachMe[${index}].whyPreferred`, { min: teachLimits.detailMin, max: teachLimits.detailMax });
     const normalized = concept.trim().toLowerCase();
     if (concepts.has(normalized)) throw new Error(`Duplicate teachMe concept: ${concept}`);
     concepts.add(normalized);
   }
-  const challengePoints = assertUniqueTextList(result.reviewerChallengePoints, "reviewerChallengePoints", {
-    min: 0,
-    max: 5,
-    itemMin: 10,
-    itemMax: 500,
-  });
+  const challengePoints = assertUniqueTextList(result.reviewerChallengePoints, "reviewerChallengePoints", PLAN_V2_LIMITS.reviewerChallengePoints);
   if (challengePoints.some((item) => /^(?:none|n\/?a|not applicable|no (?:material )?(?:challenge|concern)s?)[.!]?$/i.test(item.trim()))) {
     throw new Error("reviewerChallengePoints must not contain generic filler.");
   }
-  assertText(result.machineImplementationDetails, "machineImplementationDetails", { min: 40, max: 12_000 });
+  assertText(result.machineImplementationDetails, "machineImplementationDetails", PLAN_V2_LIMITS.machineImplementationDetails);
   validateDecisionFieldsV2(result);
 
   return validatePlanningClassificationFields(result);
