@@ -281,6 +281,14 @@ job; it uses the validator version that rejected the valid patch.
 - Protect `main` with pull requests, the `validate` check, no force pushes, and
   no automation bypass before public release.
 
-The repository is currently private. GitHub Free does not enforce repository
-rulesets for private repositories; keep it private and owner-controlled until a
-supporting plan or public visibility makes protection available.
+Public visibility is a separate human-operated checkpoint under issue #115; a
+documentation statement never proves the setting changed. Before and after
+that checkpoint, keep the repository owner-controlled and fail closed unless
+`main` actually enforces pull requests, one independent approval, stale-review
+dismissal, resolved conversations, strict `CI Gate`, administrator inclusion,
+and bans on force pushes and deletion. Use squash merging only. Private
+vulnerability reporting must be enabled and verified before public exposure.
+
+The repository remains proprietary even when publicly viewable. See the root
+`NOTICE.md` and `SECURITY.md`; public issues, discussions, pull requests, logs,
+and model prompts are not vulnerability-reporting channels.
