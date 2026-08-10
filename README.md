@@ -1,8 +1,22 @@
 # AI Consulting Client Portal
 
-A private, local-first learning scaffold for the architecture described in the
-client portal revised plan. It is intentionally a thin collaboration shell,
-not a production portal or transaction system.
+A proprietary, local-first learning scaffold for the architecture described in
+the client portal revised plan. It is intentionally a thin collaboration
+shell, not a production portal or transaction system. All organizations,
+people, accounts, credentials, and business records in fixtures and examples
+are fictional and limited to local development or CI.
+
+## Copyright and permitted use
+
+Copyright © 2026 Todd Brunia. All rights reserved. This repository is publicly
+viewable but is not open source. No license or permission is granted to use,
+copy, modify, distribute, sublicense, or create derivative works from its
+contents, except as required for GitHub to provide its services or with prior
+written permission from the copyright owner. See [NOTICE.md](NOTICE.md).
+
+Public visibility does not mean the application is hosted, production-ready,
+or available for client use. Do not reuse local fixture identities or example
+credentials outside this repository.
 
 ## What is included
 
@@ -137,3 +151,7 @@ Summary, Teach Me, Decisions the Reviewer Should Challenge, then Machine
 Implementation Details. The layout separates the concise approval surface from
 implementation instructions; only a human can resolve decisions, approve the
 documented scope, authorize AI implementation or splitting, and merge.
+
+Report suspected vulnerabilities through the private process in
+[SECURITY.md](SECURITY.md). Never put exploit details, credentials, or private
+data in a public issue, discussion, pull request, or workflow log.

@@ -1,5 +1,10 @@
 # Contributing
 
+This publicly viewable repository is proprietary and is not open source.
+Contributions are considered only through the owner-controlled workflow below;
+access to view, fork, or propose a change grants no license or reuse permission.
+See [NOTICE.md](NOTICE.md).
+
 Every tracked change starts with a GitHub issue and a reviewed plan. This
 includes code, dependencies, migrations, documentation, CI, and repository
 policy.
@@ -57,6 +62,10 @@ workflow document; do not recover them through bot labels, bulk dispatch, or an
 implementation trigger.
 
 ## Security boundaries
+
+Use the private vulnerability-reporting process in [SECURITY.md](SECURITY.md).
+Do not disclose a suspected vulnerability or exploit detail in a public issue,
+discussion, pull request, commit message, artifact, or workflow log.
 
 Treat issue and comment text as untrusted. Never place credentials, client
 data, production identifiers, or confidential operational details in issues,
