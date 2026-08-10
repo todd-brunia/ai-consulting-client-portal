@@ -55,6 +55,32 @@ trigger AI implementation, merge, or deploy. Existing approved comments using
 the legacy marked-plan layout remain valid implementation inputs and continue
 to provide bounded pull-request titles; automation does not rewrite them.
 
+### Planning contract enforcement
+
+The `plan/v2` contract is enforced in three explicit layers:
+
+1. `.github/codex/schemas/plan-v2.json` constrains the complete object shape,
+   required fields, closed objects, enums, item shapes, and nullable union
+   types using only keywords accepted by the pinned Codex response-schema
+   dialect.
+2. Both trusted planning prompts contain the exact constraint reference
+   rendered from `PLAN_V2_LIMITS`. Repository tests compare that generated
+   reference with each prompt, so a runtime count or length change cannot land
+   without a matching generation-contract update.
+3. `validatePlanningResultV2` remains the authoritative publisher boundary. It
+   rechecks lengths, counts, normalized uniqueness, kebab-case identities,
+   classification-controlled nullability, decision hygiene, public-text
+   safety, split children, and publication byte budgets before any comment or
+   label transition.
+
+The response-schema compatibility check intentionally rejects unsupported
+keywords such as `minItems`, `maxItems`, `minLength`, `maxLength`, `pattern`,
+and `uniqueItems`. These semantic rules belong to the parity-tested prompt and
+trusted publisher until the pinned Codex action and CLI are proven to support a
+broader dialect. Publisher failures reject the complete result; they never
+silently truncate material risks, decisions, dependencies, or reviewer
+guidance.
+
 Classification controls the next human action:
 
 - `focused` moves to `plan-ready`. Request a revision or apply

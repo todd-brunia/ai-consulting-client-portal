@@ -49,6 +49,16 @@ named field:
   the classification nullability and split-child rules from the planning
   contract, changing them only when the trusted feedback changes the scope.
 
+### Required plan/v2 constraint reference
+
+- Text lengths: objective 10-500; executiveSummary 40-4000; machineImplementationDetails 40-12000; blockingDecision and splitReason 10-2000 characters when applicable.
+- Review lists: keyDecisions 1-12 items of 5-500 characters; tradeoffs, risks, and openQuestions 0-12 items of 5-500; implementationOrder 1-20 items of 5-1000; reviewerChallengePoints 0-5 items of 10-500; every review list is unique after trim/case normalization.
+- Structured sections: fileChanges 1-50 entries with unique 1-500-character paths and 5-500-character changes; teachMe 0-10 entries with unique 3-160-character concepts and 10-1000-character explanations; decisionOptions 2-4 entries with unique 3-64-character kebab-case IDs, unique 3-120-character labels, 10-1000-character descriptions, and 1-6 unique 5-500-character non-filler tradeoffs; recommendationRationale is 20-2000 characters.
+- Split proposals: 2-10 children with unique 3-64-character kebab-case IDs, 5-160-character titles, outcomes and splitReason of at least 10 characters, 1-12 acceptance/dependency/included/excluded items of at most 500 characters, and 0-10 unique suggested labels of at most 50 characters per child.
+- Classification coupling: focused uses null for all decision and split fields; needs-decision supplies all decision fields and null split fields; split-required supplies splitReason and children and null decision fields.
+- Public safety: all strings reject credentials and reserved automation markers; decision text also rejects requests for sensitive values, generic filler, and unsupported certainty; duplicate checks normalize reviewer text case and surrounding whitespace.
+- Publication budgets: visible Markdown 14000 bytes, machine payload 5500 bytes, framing 500 bytes, and combined comment 20000 bytes. Never truncate material content to fit.
+
 Keep the complete revised review comment within a 14,000-byte UTF-8 visible
 budget. Use focused one-sentence list, file-impact, outcome, criterion, and
 scope entries where practical. For `split-required`, keep normalized child

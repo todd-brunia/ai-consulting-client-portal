@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   PLANNING_COMMENT_BUDGETS,
+  PLAN_V2_LIMITS,
   PLAN_MARKER,
   SPLIT_ENVELOPE_VERSION,
   SPLIT_PROPOSAL_PREFIX,
@@ -20,6 +21,7 @@ import {
   implementationPullRequestTitle,
   marker,
   planningSnapshot,
+  renderPlanV2ConstraintReference,
   renderPlanningResultV2,
   transitionFor,
   validateImplementationAuthorization,
@@ -242,6 +244,21 @@ describe("workflow state", () => {
       expect(normalizedPrompt).toContain("reserved Codex automation markers");
       expect(normalizedPrompt).toContain("legacy schema still requests `markdown`");
     }
+  });
+
+  it("keeps every planning prompt synchronized with the trusted plan/v2 limits", () => {
+    const reference = renderPlanV2ConstraintReference();
+    for (const promptPath of [
+      ".github/codex/prompts/plan.md",
+      ".github/codex/prompts/revise.md",
+    ]) {
+      expect(readFileSync(promptPath, "utf8")).toContain(reference);
+    }
+
+    expect(PLAN_V2_LIMITS.fileChanges).toMatchObject({ min: 1, max: 50 });
+    expect(PLAN_V2_LIMITS.reviewerChallengePoints).toMatchObject({ min: 0, max: 5 });
+    expect(PLAN_V2_LIMITS.children).toMatchObject({ min: 2, max: 10 });
+    expect(PLAN_V2_LIMITS.decisionOptions).toMatchObject({ min: 2, max: 4 });
   });
 
   it("uses the approved plan outcome for automation pull request titles", () => {
@@ -917,6 +934,13 @@ describe("workflow state", () => {
     expect(() => validatePlanningResultV2({ ...focusedV2Result, fileChanges: [] })).toThrow(/1-50/);
     expect(() => validatePlanningResultV2({
       ...focusedV2Result,
+      fileChanges: Array.from({ length: PLAN_V2_LIMITS.fileChanges.max + 1 }, (_, index) => ({
+        path: `docs/audit-${index}.md`,
+        change: `Record bounded audit result ${index}.`,
+      })),
+    })).toThrow(/1-50/);
+    expect(() => validatePlanningResultV2({
+      ...focusedV2Result,
       fileChanges: [focusedV2Result.fileChanges[0], focusedV2Result.fileChanges[0]],
     })).toThrow(/Duplicate fileChanges path/);
     expect(() => validatePlanningResultV2({
@@ -952,7 +976,13 @@ describe("workflow state", () => {
     })).toThrow(/Duplicate teachMe concept/);
     expect(() => validatePlanningResultV2({ ...focusedV2Result, reviewerChallengePoints: ["Not applicable."] }))
       .toThrow(/generic filler/);
-    expect(() => validatePlanningResultV2({ ...focusedV2Result, reviewerChallengePoints: Array(6).fill("Challenge this choice.") }))
+    expect(() => validatePlanningResultV2({
+      ...focusedV2Result,
+      reviewerChallengePoints: Array.from(
+        { length: PLAN_V2_LIMITS.reviewerChallengePoints.max + 1 },
+        (_, index) => `Challenge material contract choice ${index}.`,
+      ),
+    }))
       .toThrow(/0-5/);
     expect(() => validatePlanningResultV2({ ...focusedV2Result, machineImplementationDetails: "too short" }))
       .toThrow(/machineImplementationDetails/);
