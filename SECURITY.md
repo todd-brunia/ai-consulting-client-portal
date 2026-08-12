@@ -33,5 +33,6 @@ credentials are fictional and are not vulnerabilities by themselves.
 
 Coordinate disclosure with the repository owner. Do not publish exploit
 details while a report is being validated or remediated. Public visibility and
-the absence of an open-source license do not weaken the credential, privacy,
-or human-approval boundaries described in [CONTRIBUTING.md](CONTRIBUTING.md).
+the proprietary reuse policy in [COPYRIGHT.md](COPYRIGHT.md) do not weaken the
+credential, privacy, or human-approval boundaries described in
+[CONTRIBUTING.md](CONTRIBUTING.md).

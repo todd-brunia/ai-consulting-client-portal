@@ -87,7 +87,7 @@ the personal email address.
 | Area | Finding | Disposition |
 | --- | --- | --- |
 | README privacy wording | The introduction calls the repository private. | Must be updated by issue #114 before publication. |
-| Proprietary terms | No open-source license is present, but an explicit all-rights-reserved/no-reuse notice is not yet prominent. | Must be added by issue #114. |
+| Proprietary terms | The root `COPYRIGHT.md` states the all-rights-reserved/no-reuse policy and distinguishes third-party material under its own applicable terms. | Aligned by issue #134; retain the notice when updating repository policy. |
 | Vulnerability reporting | Public-safe reporting guidance is not yet present at the repository root. | Must be added by issue #114. |
 | Local credentials | Documentation describes generated local Supabase secrets and an ignored signing key. | Safe if the local-only/server-only boundary and placeholders remain explicit. |
 | Fictional fixtures | Test accounts, organizations, credentials, and portal content are deterministic local/CI fixtures. | Safe; preserve explicit fictional/local-only labeling. |
