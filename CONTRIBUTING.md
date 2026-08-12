@@ -1,9 +1,9 @@
 # Contributing
 
-This publicly viewable repository is proprietary and is not open source.
-Contributions are considered only through the owner-controlled workflow below;
-access to view, fork, or propose a change grants no license or reuse permission.
-See [NOTICE.md](NOTICE.md).
+This repository is public for transparency and demonstration, not as a general
+grant of reuse rights. Contributions are considered only through the
+owner-controlled workflow below; access to view, fork, or propose a change
+grants no license or reuse permission. See [COPYRIGHT.md](COPYRIGHT.md).
 
 Every tracked change starts with a GitHub issue and a reviewed plan. This
 includes code, dependencies, migrations, documentation, CI, and repository

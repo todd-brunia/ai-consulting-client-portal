@@ -6,13 +6,16 @@ shell, not a production portal or transaction system. All organizations,
 people, accounts, credentials, and business records in fixtures and examples
 are fictional and limited to local development or CI.
 
-## Copyright and permitted use
+## Copyright and reuse
 
-Copyright © 2026 Todd Brunia. All rights reserved. This repository is publicly
-viewable but is not open source. No license or permission is granted to use,
-copy, modify, distribute, sublicense, or create derivative works from its
-contents, except as required for GitHub to provide its services or with prior
-written permission from the copyright owner. See [NOTICE.md](NOTICE.md).
+This repository is public for transparency and demonstration, not as a general
+grant of reuse rights. See [COPYRIGHT.md](COPYRIGHT.md) for the copyright and
+reuse policy.
+
+The portal may separately permit people to interact with its deployed services
+when the owner makes those services available. That permission does not grant
+permission to copy, modify, redistribute, publish, sell, sublicense, or create
+derivative works from this repository's original content.
 
 Public visibility does not mean the application is hosted, production-ready,
 or available for client use. Do not reuse local fixture identities or example

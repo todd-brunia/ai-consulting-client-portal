@@ -290,5 +290,5 @@ and bans on force pushes and deletion. Use squash merging only. Private
 vulnerability reporting must be enabled and verified before public exposure.
 
 The repository remains proprietary even when publicly viewable. See the root
-`NOTICE.md` and `SECURITY.md`; public issues, discussions, pull requests, logs,
+`COPYRIGHT.md` and `SECURITY.md`; public issues, discussions, pull requests, logs,
 and model prompts are not vulnerability-reporting channels.
