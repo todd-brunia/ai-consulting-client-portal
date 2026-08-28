@@ -1,0 +1,32 @@
+name: M3/E1 builder fixture
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Fixture issue number
+        required: true
+        type: string
+      fixture_id:
+        description: Exact supervised-fixture identifier
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Verify dedicated fixture binding
+        env:
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          FIXTURE_ID: ${{ inputs.fixture_id }}
+        run: |
+          test "$ISSUE_NUMBER" = "136"
+          test "$FIXTURE_ID" = "m3e1-builder-136"
+          printf 'Verified supervised builder fixture for issue #%s (%s)\n' \
+            "$ISSUE_NUMBER" "$FIXTURE_ID"
