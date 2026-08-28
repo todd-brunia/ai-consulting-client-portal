@@ -1,4 +1,4 @@
-# AI Consulting Client Portal
+# AI Consulting Client Portal :smirk:
 
 A proprietary, local-first learning scaffold for the architecture described in
 the client portal revised plan. It is intentionally a thin collaboration
