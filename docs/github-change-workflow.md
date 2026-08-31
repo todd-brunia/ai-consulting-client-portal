@@ -29,6 +29,20 @@ path, including explicitly invoked local interactive Codex work, but does not
 start label-triggered automation. `approved-for-ai-build` is the separate
 automation trigger.
 
+## Supervised implementation dispatch
+
+`.github/workflows/implementation.yml` is an evidence-only target workflow for
+the separately authorized supervised orchestrator checkpoint. It accepts only
+`issue_number`, `run_id`, `work_item_id`, `plan_sha256`, `binding_sha256`, and
+their deterministic `correlation` marker. It validates bounded formats and
+correlation consistency, uses read-only contents permission, does not check out
+source, and creates no artifact. The orchestrator remains responsible for the
+immutable dispatch ref and canonical workflow-run verification.
+
+Disable use of this workflow to stop the checkpoint. Do not delete workflow-run
+evidence; replay needs separate reviewed authorization and fresh canonical
+validation.
+
 ## Structured planning comments
 
 Planning and revision use the versioned `plan/v2` contract. The trusted
