@@ -1,0 +1,57 @@
+name: Supervised implementation evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Bound issue number
+        required: true
+        type: string
+      run_id:
+        description: Bound orchestrator run UUID
+        required: true
+        type: string
+      work_item_id:
+        description: Bound orchestrator work-item UUID
+        required: true
+        type: string
+      plan_sha256:
+        description: Bound marked-plan SHA-256
+        required: true
+        type: string
+      binding_sha256:
+        description: Bound canonical evidence SHA-256
+        required: true
+        type: string
+      correlation:
+        description: Deterministic orchestrator correlation marker
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate-dispatch-contract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Validate immutable dispatch contract
+        env:
+          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          RUN_ID: ${{ inputs.run_id }}
+          WORK_ITEM_ID: ${{ inputs.work_item_id }}
+          PLAN_SHA256: ${{ inputs.plan_sha256 }}
+          BINDING_SHA256: ${{ inputs.binding_sha256 }}
+          CORRELATION: ${{ inputs.correlation }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ISSUE_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          [[ "$RUN_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
+          [[ "$WORK_ITEM_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
+          [[ "$PLAN_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$BINDING_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$CORRELATION" == "orchestrator:$RUN_ID:$WORK_ITEM_ID:$BINDING_SHA256" ]]
+          echo "Supervised implementation dispatch contract validated." >> "$GITHUB_STEP_SUMMARY"
