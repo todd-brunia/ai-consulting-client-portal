@@ -39,6 +39,22 @@ correlation consistency, uses read-only contents permission, does not check out
 source, and creates no artifact. The orchestrator remains responsible for the
 immutable dispatch ref and canonical workflow-run verification.
 
+The workflow's run name is exactly the supplied `correlation` marker, exposing
+it as the canonical workflow-run title for orchestrator callback correlation.
+The title is untrusted input, not proof of authorization: the orchestrator must
+also verify the accepted dispatch receipt, repository, immutable default SHA,
+workflow identity, attempt, and bound issue/plan. Failed input validation still
+leaves a named run and must never be interpreted as successful evidence.
+
+Portal #142's approved callback-fixture amendment adds this metadata only; the
+workflow still creates no branch or PR and retains read-only permissions. Merge
+the workflow prerequisite before obtaining a fresh immutable default-SHA binding.
+A disposable draft PR and its ordinary CI checks require a separately authorized
+fixture step using the existing publishing boundary. Before any dispatch, inspect
+retained checkpoint/receipt evidence; do not assume the fixture is unused.
+This change does not authorize dispatch, replay, callback enablement, credentials,
+permission expansion, or AWS deployment. Preserve any accepted live evidence.
+
 Disable use of this workflow to stop the checkpoint. Do not delete workflow-run
 evidence; replay needs separate reviewed authorization and fresh canonical
 validation.
