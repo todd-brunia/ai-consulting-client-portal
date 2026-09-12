@@ -1,4 +1,5 @@
 name: Supervised implementation evidence
+run-name: ${{ inputs.correlation }}
 
 on:
   workflow_dispatch:
